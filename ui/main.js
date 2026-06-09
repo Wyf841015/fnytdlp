@@ -119,8 +119,10 @@ const toast = (msg, type = 'info') => {
   if (!c) return;
   const el = document.createElement('div');
   const cssType = type === 'warn' ? 'warning' : type;
+  // M-10: 4 种 type 对应 4 种 icon
+  const icons = { success: '✓', error: '✕', warning: '!', info: 'i' };
   el.className = 'toast ' + cssType;
-  el.textContent = msg;
+  el.innerHTML = `<span class="toast-icon">${icons[cssType] || 'i'}</span><span class="toast-msg">${esc(msg)}</span>`;
   c.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
   setTimeout(() => el.classList.remove('show'), 2400);

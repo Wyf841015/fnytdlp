@@ -440,6 +440,23 @@ body {
   color: var(--info);
 }
 
+.toast-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.toast.success .toast-icon { background: var(--success); color: hsl(0, 0%, 100%); }
+.toast.error .toast-icon { background: var(--danger); color: hsl(0, 0%, 100%); }
+.toast.warning .toast-icon { background: var(--warning); color: hsl(40, 50%, 15%); }
+.toast.info .toast-icon { background: var(--info); color: hsl(0, 0%, 100%); }
+
 /* Light theme toasts */
 html[data-theme='light'] .toast {
   background: var(--bg-elevated);
