@@ -1082,6 +1082,16 @@ html[data-theme='light'] .task-item.selected {
   line-height: 1.6;
 }
 .footer p { margin-bottom: 0; }
+.footer a.footer-link {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--t-fast), text-shadow var(--t-fast);
+}
+.footer a.footer-link:hover {
+  color: var(--accent-hover, var(--accent));
+  text-decoration: underline;
+  text-shadow: 0 0 8px var(--accent-glow);
+}
 
 /* ===== Responsive — Tablet & Below ===== */
 @media (max-width: 768px) {
