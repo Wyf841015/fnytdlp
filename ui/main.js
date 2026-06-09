@@ -122,8 +122,8 @@ window.showModal = showModal;
 window.hideModal = hideModal;
 
 // ── 主题切换 (HSL 系统, 跟 fnm3u8dl 一致) ──────────────────────
-const THEMES = ['default', 'dark', 'ocean', 'forest', 'sunset'];
-let _themeIdx = 0;
+const THEMES = ['dark', 'light'];
+let _themeIdx = THEMES.indexOf('dark');
 const toggleTheme = () => {
   _themeIdx = (_themeIdx + 1) % THEMES.length;
   const t = THEMES[_themeIdx];
@@ -452,7 +452,8 @@ const showSettingsModal = async () => {
   showModal('settingsModal');
 };
 const saveSettings = async () => {
-  const cfg = {
+  try {
+    const cfg = {
     downloadPath: $('setDownloadPath').value.trim(),
     concurrentDownloads: parseInt($('setConcurrent').value) || 3,
     concurrentFragments: parseInt($('setConcurrentFragments').value) || 4,
@@ -465,14 +466,17 @@ const saveSettings = async () => {
     writeAutoSubs: $('setWriteAutoSubs').checked,
     writeThumbnail: $('setWriteThumbnail').checked,
     noPlaylist: $('setNoPlaylist').checked,
-  };
-  const r = await API.post('/api/config', cfg);
-  if (r.ok) { hideModal('settingsModal'); toast('设置已保存', 'success'); }
-  else { toast('保存失败: ' + (r.error || 'unknown'), 'error'); }
+    };
+    const r = await API.post('/api/config', cfg);
+    if (r && r.ok) { hideModal('settingsModal'); toast('设置已保存', 'success'); }
+    else { toast('保存失败: ' + ((r && r.error) || '服务端返回异常'), 'error'); }
+  } catch (e) {
+    toast('保存失败: ' + e.message, 'error');
+    console.error('saveSettings error', e);
+  }
 };
 window.saveSettings = saveSettings;
-// 把 settingsBtn click 绑到 showSettingsModal
-$('settingsBtn').addEventListener('click', showSettingsModal);
+// 工具栏设置按钮用 onclick="showSettingsModal()" 已在 HTML 绑定
 
 // ── Cookie Modal ──────────────────────────────────────────────────
 const showCookieModal = async () => {
