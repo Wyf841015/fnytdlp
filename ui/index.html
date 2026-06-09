@@ -159,6 +159,13 @@
         <div style="margin-top:6px"><button class="btn btn-sm btn-ghost" onclick="parseUrls()">🔍 解析第一条</button></div>
       </div>
       <div class="form-group">
+        <label class="form-label">Cookie 认证</label>
+        <select class="select" id="addCookieName">
+          <option value="">无 (不使用 Cookie)</option>
+        </select>
+        <div class="form-hint">在 🍪 Cookie 管理里配置多个网站 cookie, 此处选择要使用的</div>
+      </div>
+      <div class="form-group">
         <label class="form-label">格式选择</label>
         <select class="select" id="addFormat">
           <option value="">使用默认 (设置里的格式)</option>
@@ -294,24 +301,40 @@
     </div>
     <div class="modal-body">
       <div class="form-hint" style="margin-bottom:12px">
-        某些视频站需要登录才能下 (YouTube 会员 / B站大会员 / 知乎登录可见等)。<br>
-        从浏览器导出 Netscape 格式的 cookies.txt 粘到下面 → 保存后下次下载自动加载。
+        某些视频站需要登录才能下 (YouTube 会员 / B站大会员 等)。<br>
+        每个网站一套 cookie，新建任务时可选 → 自动作为 <code>--cookies</code> 参数传给 yt-dlp。
       </div>
       <div class="form-group">
-        <label class="form-label">Netscape 格式 cookies.txt 内容</label>
-        <textarea class="input" id="cookieContent" rows="12" placeholder="# Netscape HTTP Cookie File
+        <label class="form-label">已配置的 Cookie</label>
+        <div id="cookieList" class="cookie-list">加载中...</div>
+      </div>
+      <details class="form-advanced" open>
+        <summary>添加新 Cookie</summary>
+        <div class="form-row">
+          <div class="form-group form-group-half">
+            <label class="form-label">名称 (唯一)</label>
+            <input class="input" id="cookieName" placeholder="youtube / bilibili / twitter">
+            <div class="form-hint">字母数字下划线，新建任务时按名称选择</div>
+          </div>
+          <div class="form-group form-group-half">
+            <label class="form-label">网站域名 (可选)</label>
+            <input class="input" id="cookieDomain" placeholder="youtube.com">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Netscape 格式 cookies.txt 内容</label>
+          <textarea class="input" id="cookieContent" rows="8" placeholder="# Netscape HTTP Cookie File
 # https://curl.haxx.se/rfc/cookie_spec.html
 # This is a generated file! Do not edit.
 
-.youtube.com  TRUE  /  FALSE  1234567890  CONSENT  YES+cb
-.youtube.com  TRUE  /  FALSE  1234567890  LOGIN_INFO  ..."></textarea>
-      </div>
+.youtube.com	TRUE	/	FALSE	1234567890	LOGIN_INFO	..."></textarea>
+        </div>
+      </details>
       <div id="cookieStatus" class="form-hint"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="hideModal('cookieModal')">取消</button>
-      <button class="btn btn-danger" onclick="deleteCookie()">🗑 删除 Cookie</button>
-      <button class="btn btn-primary" onclick="saveCookie()">保存 Cookie</button>
+      <button class="btn btn-ghost" onclick="hideModal('cookieModal')">关闭</button>
+      <button class="btn btn-primary" onclick="saveCookie()">💾 保存 Cookie</button>
     </div>
   </div>
 </div>

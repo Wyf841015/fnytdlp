@@ -1594,6 +1594,45 @@ html[data-theme='light'] .task-item.selected {
   box-shadow: 0 8px 24px rgba(0,0,0,0.25);
 }
 
+/* ===== Cookie List ===== */
+.cookie-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  min-height: 42px;
+  align-items: center;
+}
+.cookie-list:empty::before {
+  content: '暂无 cookie, 在下方添加';
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.cookie-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+.cookie-chip .chip-domain { color: var(--text-dim); font-size: 0.7rem; }
+.cookie-chip .chip-del {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.cookie-chip .chip-del:hover { color: var(--color-danger); }
+
 /* ===== Task Detail Modal ===== */
 .info-row {
   display: flex;

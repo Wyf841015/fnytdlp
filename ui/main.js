@@ -260,6 +260,20 @@ const setKpi = (id, value) => {
 };
 
 // ── 任务操作 ──────────────────────────────────────────────────────
+const loadCookieSelect = async () => {
+  const sel = $('addCookieName');
+  if (!sel) return;
+  try {
+    const r = await API.get('/api/cookies');
+    const cookies = (r && r.cookies) || [];
+    sel.innerHTML = '<option value="">无 (不使用 Cookie)</option>' +
+      cookies.map(c => `<option value="${esc(c.name)}">${esc(c.name)}${c.domain ? ' · ' + esc(c.domain) : ''}</option>`).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="">无 (不使用 Cookie)</option>';
+  }
+};
+window.loadCookieSelect = loadCookieSelect;
+
 const showAddTaskModal = () => {
   console.log('[fnytdlp] showAddTaskModal() called');
   $('addUrls').value = '';
@@ -270,7 +284,9 @@ const showAddTaskModal = () => {
   $('addWriteSubs').checked = false;
   $('addWriteThumbnail').checked = true;
   $('addNoPlaylist').checked = false;
+  $('addCookieName').value = '';
   $('addPreview').textContent = '点 "解析" 按钮查看元数据';
+  loadCookieSelect();
   showModal('addTaskModal');
   setTimeout(() => $('addUrls').focus(), 100);
 };
@@ -314,6 +330,8 @@ const submitAddTask = async () => {
   options.writeSubs = $('addWriteSubs').checked;
   options.writeThumbnail = $('addWriteThumbnail').checked;
   options.noPlaylist = $('addNoPlaylist').checked;
+  const cookieName = $('addCookieName').value.trim();
+  if (cookieName) options.cookieName = cookieName;
 
   let ok = 0, fail = 0;
   for (const url of urls) {
@@ -478,36 +496,70 @@ const saveSettings = async () => {
 window.saveSettings = saveSettings;
 // 工具栏设置按钮用 onclick="showSettingsModal()" 已在 HTML 绑定
 
-// ── Cookie Modal ──────────────────────────────────────────────────
+// ── Cookie Modal (多网站) ─────────────────────────────────────────
+const renderCookieList = (cookies) => {
+  const list = $('cookieList');
+  if (!list) return;
+  if (!cookies || cookies.length === 0) {
+    list.innerHTML = '';
+    return;
+  }
+  list.innerHTML = cookies.map(c =>
+    `<span class="cookie-chip">🍪 <strong>${esc(c.name)}</strong>${c.domain ? ` <span class="chip-domain">${esc(c.domain)}</span>` : ''}<button class="chip-del" title="删除" onclick="deleteCookie('${esc(c.name)}')">×</button></span>`
+  ).join('');
+};
+const loadCookieList = async () => {
+  try {
+    const r = await API.get('/api/cookies');
+    renderCookieList(r.cookies || []);
+  } catch (e) {
+    const list = $('cookieList');
+    if (list) list.textContent = '加载失败: ' + e.message;
+  }
+};
+window.loadCookieList = loadCookieList;
+
 const showCookieModal = async () => {
   showModal('cookieModal');
   $('cookieStatus').textContent = '';
-  // 状态: 列出文件是否存在
-  try {
-    const cfg = await API.get('/api/config');
-    if (cfg.cookiesEnabled) {
-      $('cookieStatus').innerHTML = '<span style="color:var(--success)">✓ Cookie 已启用</span>';
-    } else {
-      $('cookieStatus').innerHTML = '<span style="color:var(--text-dim)">未配置 Cookie</span>';
-    }
-  } catch (e) {}
+  $('cookieName').value = '';
+  $('cookieDomain').value = '';
+  $('cookieContent').value = '';
+  await loadCookieList();
 };
 window.showCookieModal = showCookieModal;
 
 const saveCookie = async () => {
+  const name = $('cookieName').value.trim();
+  const domain = $('cookieDomain').value.trim();
   const content = $('cookieContent').value.trim();
+  if (!name) { toast('请输入 Cookie 名称', 'warn'); return; }
   if (!content) { toast('Cookie 内容不能为空', 'warn'); return; }
-  const r = await API.post('/api/cookies', { content });
-  if (r.ok) { toast(`Cookie 已保存 (${r.size} 字节)`, 'success'); hideModal('cookieModal'); }
-  else { toast('保存失败: ' + (r.error || ''), 'error'); }
+  const r = await API.post('/api/cookies', { name, domain, content });
+  if (r.ok) {
+    toast(`Cookie "${name}" 已保存`, 'success');
+    $('cookieName').value = '';
+    $('cookieDomain').value = '';
+    $('cookieContent').value = '';
+    renderCookieList(r.cookies);
+    loadCookieSelect();
+  } else {
+    toast('保存失败: ' + (r.error || ''), 'error');
+  }
 };
 window.saveCookie = saveCookie;
 
-const deleteCookie = async () => {
-  await API.del('/api/cookies');
-  $('cookieContent').value = '';
-  $('cookieStatus').innerHTML = '<span style="color:var(--text-dim)">Cookie 已删除</span>';
-  toast('Cookie 已删除', 'success');
+const deleteCookie = async (name) => {
+  if (!name) return;
+  if (!confirm(`确认删除 Cookie "${name}"?`)) return;
+  const r = await API.del('/api/cookies/' + encodeURIComponent(name));
+  if (r.ok) {
+    toast(`Cookie "${name}" 已删除`, 'success');
+    renderCookieList(r.cookies);
+    loadCookieSelect();
+  } else {
+    toast('删除失败', 'error');
+  }
 };
 window.deleteCookie = deleteCookie;
 

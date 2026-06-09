@@ -41,7 +41,7 @@ const DATA_DIR  = PKGVAR ? path.join(PKGVAR, 'data') : path.join(APP_DIR, 'data'
 const LOG_FILE  = PKGVAR ? path.join(PKGVAR, 'info.log') : path.join(DATA_DIR, 'server.log');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const TASKS_FILE  = path.join(DATA_DIR, 'tasks.json');
-const COOKIES_FILE = PKGVAR ? path.join(PKGVAR, 'cookies.txt') : path.join(DATA_DIR, 'cookies.txt');
+const COOKIES_DIR = PKGVAR ? path.join(PKGVAR, 'cookies') : path.join(DATA_DIR, 'cookies');
 
 const SOCK_NAME = 'fnytdlp.sock';
 const SOCK_PATH = path.join(TARGET_DIR, SOCK_NAME);
@@ -161,8 +161,8 @@ const DEFAULT_CONFIG = {
   concurrentFragments: 4,
   proxyUrl: '',
   noPlaylist: false,
-  // Cookie 文件路径 (用户在 UI 上传, 自动从 PKGVAR 写)
-  cookiesEnabled: false,
+  // Cookie 多网站列表: [{name, domain}] (文件存于 cookies/<safeName>.txt)
+  cookies: [],
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -235,6 +235,31 @@ const handleSSE = (req, res) => {
 const _procs = new Map();   // taskId -> ChildProcess
 
 // ── URL validation ────────────────────────────────────────────────────
+// ── Cookies 多网站管理 ─────────────────────────────────────────────
+const safeName = (s) => String(s).toLowerCase().replace(/[^a-z0-9_-]/g, '_').substring(0, 64);
+const ensureCookiesDir = () => { try { fs.mkdirSync(COOKIES_DIR, { recursive: true }); } catch (e) {} };
+const getCookieFile = (name) => path.join(COOKIES_DIR, safeName(name) + '.txt');
+const listCookies = () => (config.cookies || []).map(c => ({ name: c.name, domain: c.domain || '' }));
+const addCookie = (name, domain, content) => {
+  ensureCookiesDir();
+  if (!name || typeof name !== 'string') throw new Error('name required');
+  if (!content || !content.includes('\t')) throw new Error('Invalid cookie content (must be tab-separated Netscape format)');
+  const list = config.cookies || [];
+  const idx = list.findIndex(c => c.name === name);
+  const entry = { name, domain: domain || '' };
+  if (idx >= 0) list[idx] = entry; else list.push(entry);
+  config.cookies = list;
+  fs.writeFileSync(getCookieFile(name), content, { mode: 0o600 });
+  saveConfig();
+};
+const deleteCookie = (name) => {
+  const list = config.cookies || [];
+  config.cookies = list.filter(c => c.name !== name);
+  const fp = getCookieFile(name);
+  if (fs.existsSync(fp)) fs.unlinkSync(fp);
+  saveConfig();
+};
+
 const isValidUrl = (url) => {
   try {
     const u = new URL(url);
@@ -385,9 +410,10 @@ const buildYtDlpArgs = (task) => {
       args.push('--sponsorblock-mark', cat);
     }
   }
-  // Cookie
-  if (config.cookiesEnabled && fs.existsSync(COOKIES_FILE)) {
-    args.push('--cookies', COOKIES_FILE);
+  // Cookie (按任务指定 cookieName)
+  if (opts.cookieName && config.cookies && config.cookies.some(c => c.name === opts.cookieName)) {
+    const fp = getCookieFile(opts.cookieName);
+    if (fs.existsSync(fp)) args.push('--cookies', fp);
   }
   // 代理
   if (config.proxyUrl) args.push('--proxy', config.proxyUrl);
@@ -725,25 +751,24 @@ const handle = async (req, res) => {
       saveConfig();
       sendJSON(res, 200, { ok: true, config });
     }
-    // ── cookies ──
+    // ── cookies (多网站管理) ──
+    else if (pathname === '/api/cookies' && req.method === 'GET') {
+      sendJSON(res, 200, { cookies: listCookies() });
+    }
     else if (pathname === '/api/cookies' && req.method === 'POST') {
       const body = await parseBody(req);
-      const content = body.content || '';
-      // P1-2: 增强 Cookie 格式校验 — 检查至少有一条 tab 分隔的 Netscape 格式行
-      const lines = content.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
-      const validLines = lines.filter(l => l.includes('\t'));
-      if (!content.includes('# Netscape HTTP Cookie File') || validLines.length === 0) {
-        return sendJSON(res, 400, { error: 'Invalid cookie file (must start with Netscape header and contain at least one tab-separated cookie line)' });
+      const { name, domain, content } = body;
+      try {
+        addCookie(name, domain, content);
+        sendJSON(res, 200, { ok: true, cookies: listCookies() });
+      } catch (e) {
+        sendJSON(res, 400, { error: e.message });
       }
-      fs.writeFileSync(COOKIES_FILE, content, { mode: 0o600 });
-      config.cookiesEnabled = true;
-      saveConfig();
-      sendJSON(res, 200, { ok: true, size: content.length });
-    } else if (pathname === '/api/cookies' && req.method === 'DELETE') {
-      if (fs.existsSync(COOKIES_FILE)) fs.unlinkSync(COOKIES_FILE);
-      config.cookiesEnabled = false;
-      saveConfig();
-      sendJSON(res, 200, { ok: true });
+    }
+    else if (pathname.startsWith('/api/cookies/') && req.method === 'DELETE') {
+      const name = decodeURIComponent(pathname.substring('/api/cookies/'.length));
+      deleteCookie(name);
+      sendJSON(res, 200, { ok: true, cookies: listCookies() });
     }
     // ── stats ──
     else if (pathname === '/api/stats' && req.method === 'GET') {
