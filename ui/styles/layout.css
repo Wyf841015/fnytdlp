@@ -1586,58 +1586,57 @@ html[data-theme='light'] .task-item.selected {
   display: inline-flex;
 }
 
-  .sponsor-section {
-    bottom: 12px;
-    right: 12px;
-  }
+.sponsor-section {
+  bottom: 12px;
+  right: 12px;
+}
 
-  .sponsor-btn {
-    width: 44px;
-    height: 44px;
-  }
+.sponsor-btn {
+  width: 44px;
+  height: 44px;
+}
 
-  .sponsor-btn svg {
-    width: 20px;
-    height: 20px;
-  }
+.sponsor-btn svg {
+  width: 20px;
+  height: 20px;
+}
 
-  .sponsor-card {
-    width: 260px;
-    bottom: 56px;
-    padding: 20px;
-  }
+.sponsor-card {
+  width: 260px;
+  bottom: 56px;
+  padding: 20px;
+}
 
-  .status-bar {
-    font-size: 0.7rem;
-    padding: 0 12px;
-    height: 28px;
-  }
+.status-bar {
+  font-size: 0.7rem;
+  padding: 0 12px;
+  height: 28px;
+}
 
-  .batch-bar {
-    padding: 8px 12px;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
+.batch-bar {
+  padding: 8px 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
 
-  .batch-actions {
-    justify-content: flex-end;
-  }
+.batch-actions {
+  justify-content: flex-end;
+}
 
-  .form-row {
-    grid-template-columns: 1fr;
-  }
+.form-row {
+  grid-template-columns: 1fr;
+}
 
-  .empty-state {
-    padding: 40px 16px;
-  }
+.empty-state {
+  padding: 40px 16px;
+}
 
-  .task-speed-row {
-    width: 100%;
-    padding-top: 4px;
-    border-top: 1px solid var(--border);
-    margin-top: 4px;
-  }
+.task-speed-row {
+  width: 100%;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
 }
 
 /* ===== Sponsor Modal ===== */
