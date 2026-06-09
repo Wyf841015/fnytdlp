@@ -837,6 +837,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     sparkSpeed = new Sparkline('sparkSpeed', { max: 30, color: 'hsl(152, 58%, 53%)' });
     sparkCompleted = new Sparkline('sparkCompleted', { max: 30, color: 'hsl(280, 60%, 65%)' });
     sparkTotal = new Sparkline('sparkTotal', { max: 30, color: 'hsl(40, 96%, 53%)' });
+    // 启动滚动采样 (200ms 间隔, sparkline.js start() 才真正启动 setInterval _tick)
+    sparkActive.start(0);
+    sparkSpeed.start(0);
+    sparkCompleted.start(0);
+    sparkTotal.start(0);
   } catch (e) { console.warn('Sparkline init failed', e); }
   // P0 修复: fnOS WebView inline onclick 失效
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
