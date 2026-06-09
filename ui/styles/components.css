@@ -136,6 +136,24 @@ body {
   transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
 
+/* iOS Safari: 强制 16px 防止 input 聚焦时自动放大视口 */
+@supports (-webkit-touch-callout: none) {
+  .input,
+  .textarea,
+  .select {
+    font-size: 16px;
+  }
+}
+
+/* 通用移动端兜底：视口宽度 < 768px 时强制 16px 防止 iOS/部分 Android 浏览器自动放大 */
+@media (max-width: 768px) {
+  .input,
+  .textarea,
+  .select {
+    font-size: 16px;
+  }
+}
+
 .input:focus,
 .textarea:focus,
 .select:focus {
