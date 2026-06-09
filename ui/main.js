@@ -673,8 +673,45 @@ const showSettingsModal = async () => {
   $('setMinFilesize').value = cfg.minFilesize || '';
   $('setMaxFilesize').value = cfg.maxFilesize || '';
   $('setMatchFilters').value = cfg.matchFilters || '';
+  // 切回 basic tab (每次打开重置)
+  switchSettingsTab('basic');
   showModal('settingsModal');
 };
+
+// ── Settings Tab 切换 (M-1) ────────────────────────────────────
+const switchSettingsTab = (name) => {
+  document.querySelectorAll('#settingsModal .settings-tab').forEach(t => {
+    const active = t.dataset.tab === name;
+    t.classList.toggle('active', active);
+    t.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('#settingsModal .settings-panel').forEach(p => {
+    const active = p.dataset.panel === name;
+    p.classList.toggle('active', active);
+    if (active) p.removeAttribute('hidden');
+    else p.setAttribute('hidden', '');
+  });
+};
+const initSettingsTabs = () => {
+  document.querySelectorAll('#settingsModal .settings-tab').forEach(t => {
+    t.addEventListener('click', () => switchSettingsTab(t.dataset.tab));
+    t.addEventListener('keydown', (e) => {
+      const tabs = Array.from(document.querySelectorAll('#settingsModal .settings-tab'));
+      const i = tabs.indexOf(t);
+      let next = -1;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = tabs.length - 1;
+      if (next >= 0) {
+        e.preventDefault();
+        tabs[next].focus();
+        switchSettingsTab(tabs[next].dataset.tab);
+      }
+    });
+  });
+};
+
 const saveSettings = async () => {
   try {
     const cfg = {
@@ -938,6 +975,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     sparkCompleted.start(0);
     sparkTotal.start(0);
   } catch (e) { console.warn('Sparkline init failed', e); }
+  // M-1: Settings Tab 切换初始化
+  initSettingsTabs();
   // P0 修复: fnOS WebView inline onclick 失效
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
   document.querySelectorAll('[onclick]:not(#settingsBtn)').forEach(el => {
