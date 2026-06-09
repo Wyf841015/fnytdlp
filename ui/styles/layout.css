@@ -508,10 +508,40 @@
 }
 
 /* ===== Task List ===== */
+.task-list-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.batch-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.batch-select-all input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .task-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.task-item.selected {
+  background: var(--accent-muted);
+  border-color: var(--accent-border);
 }
 
 /* ===== Task Item ===== */
@@ -652,6 +682,8 @@ html[data-theme='light'] .task-item.selected {
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.3;
+  flex: 1;
+  min-width: 0;
 }
 .task-url-sub {
   font-size: 0.72rem;

@@ -83,6 +83,8 @@ const API = {
 // ── state ───────────────────────────────────────────────────────────
 let tasks = [];
 let currentFilter = 'all';
+// M-7: 批量选中状态
+const _batchSelected = new Set();
 let deleteTargetId = null;
 
 // ── Sparkline instances ────────────────────────────────────────────
@@ -252,6 +254,21 @@ const renderTasks = () => {
   $('countActive').textContent = tasks.filter(t => t.status === 'downloading' || t.status === 'pending').length;
   $('countDone').textContent = tasks.filter(t => t.status === 'completed').length;
   $('countError').textContent = tasks.filter(t => t.status === 'error').length;
+  // M-7: 批量操作栏显隐 + 全选状态
+  const _sel = $('selectAllCheckbox');
+  if (_sel) {
+    const visibleIds = new Set(filtered.map(t => t.id));
+    const selectedVisible = [..._batchSelected].filter(id => visibleIds.has(id));
+    _sel.checked = selectedVisible.length === visibleIds.length && visibleIds.size > 0;
+    _sel.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleIds.size;
+  }
+  const _h = $('taskListHeader');
+  if (_h) _h.hidden = filtered.length === 0;
+  const _b = $('batchBar');
+  if (_b) {
+    $('batchCount').textContent = _batchSelected.size;
+    _b.hidden = _batchSelected.size === 0;
+  }
 };
 
 const renderTask = (t) => {
@@ -281,12 +298,16 @@ const renderTask = (t) => {
     const ms = Date.now() - new Date(t.createdAt).getTime();
     elapsed = `<span class="task-elapsed">⏳ 已用 ${formatDuration(Math.floor(ms / 1000))}</span>`;
   }
-  // M-8: Cookie 任务徽章 (任务级 cookieName = 加密会员)
+  // M-7: Cookie 任务徽章 (任务级 cookieName = 加密会员)
   const cookieBadge = t.cookieName ? `<span class="badge-encrypted" title="使用 Cookie: ${esc(t.cookieName)}">🔒 ${esc(t.cookieName)}</span>` : '';
+  // M-7: 多选 checkbox
+  const isSelected = _batchSelected.has(t.id);
+  const checkbox = `<label class="task-checkbox" onclick="event.stopPropagation()"><input type="checkbox" data-id="${esc(t.id)}" ${isSelected ? 'checked' : ''} onchange="toggleBatchSelection('${esc(t.id)}', this.checked)"><span class="checkbox-mark"></span></label>`;
 
   return `
-    <div class="task-item" data-id="${esc(t.id)}" role="button" tabindex="0" aria-label="任务: ${esc(t.title || title)}" onclick="showTaskDetail('${esc(t.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showTaskDetail('${esc(t.id)}')}">
+    <div class="task-item ${isSelected ? 'selected' : ''}" data-id="${esc(t.id)}" role="button" tabindex="0" aria-label="任务: ${esc(t.title || title)}" onclick="showTaskDetail('${esc(t.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showTaskDetail('${esc(t.id)}')}">
       <div class="task-row task-row-1">
+        ${checkbox}
         <div class="task-title">${esc(t.title || title)}</div>
         <div class="task-actions" onclick="event.stopPropagation()">
           ${showActions ? `<button class="btn-icon-sm" title="重试" onclick="retryTask('${esc(t.id)}')">🔄</button>` : ''}
@@ -497,6 +518,67 @@ const confirmDelete = async (withFile) => {
   await loadTasks();
 };
 window.confirmDelete = confirmDelete;
+
+// M-7: 批量选择 ──────────────────────────────────────────
+const toggleBatchSelection = (id, checked) => {
+  if (checked) _batchSelected.add(id);
+  else _batchSelected.delete(id);
+  renderTasks();
+};
+const toggleSelectAll = (checked) => {
+  // 全选 = 当前可见 (filter + search 后) 全部
+  const list = $('taskList');
+  if (!list) return;
+  const visible = list.querySelectorAll('.task-item');
+  visible.forEach(el => {
+    const id = el.dataset.id;
+    if (!id) return;
+    if (checked) _batchSelected.add(id);
+    else _batchSelected.delete(id);
+  });
+  renderTasks();
+};
+const clearBatchSelection = () => {
+  _batchSelected.clear();
+  renderTasks();
+};
+const batchRetry = async () => {
+  if (_batchSelected.size === 0) return;
+  const ids = [..._batchSelected];
+  for (const id of ids) {
+    try { await API.post(`/api/tasks/${id}/retry`); } catch (e) { console.warn('batch retry failed', id, e); }
+  }
+  toast(`已重试 ${ids.length} 个任务`, 'success');
+  clearBatchSelection();
+  await loadTasks();
+};
+const batchStop = async () => {
+  if (_batchSelected.size === 0) return;
+  const ids = [..._batchSelected];
+  for (const id of ids) {
+    try { await API.post(`/api/tasks/${id}/stop`); } catch (e) { console.warn('batch stop failed', id, e); }
+  }
+  toast(`已停止 ${ids.length} 个任务`, 'success');
+  clearBatchSelection();
+  await loadTasks();
+};
+const batchDelete = async () => {
+  if (_batchSelected.size === 0) return;
+  const ids = [..._batchSelected];
+  if (!await showConfirm('确认删除', `确认删除 ${ids.length} 个任务? (仅记录, 不删文件)`)) return;
+  for (const id of ids) {
+    try { await API.del(`/api/tasks/${id}`); } catch (e) { console.warn('batch delete failed', id, e); }
+  }
+  toast(`已删除 ${ids.length} 个任务`, 'success');
+  clearBatchSelection();
+  await loadTasks();
+};
+window.toggleBatchSelection = toggleBatchSelection;
+window.toggleSelectAll = toggleSelectAll;
+window.clearBatchSelection = clearBatchSelection;
+window.batchRetry = batchRetry;
+window.batchStop = batchStop;
+window.batchDelete = batchDelete;
 
 // 通用函数式 loading 守卫: 期间禁用按钮, 避免用户重复点击导致 N 次请求
 const withButtonLoading = async (btn, fn) => {
