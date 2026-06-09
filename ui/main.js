@@ -230,7 +230,14 @@ const loadTasks = async () => {
 
 const renderTasks = () => {
   const list = $('taskList');
-  const filtered = currentFilter === 'all' ? tasks : tasks.filter(t => t.status === currentFilter);
+  // M-3: 搜索 + 状态筛选
+  const query = ($('searchInput')?.value || '').trim().toLowerCase();
+  const byFilter = currentFilter === 'all' ? tasks : tasks.filter(t => t.status === currentFilter);
+  const filtered = !query ? byFilter : byFilter.filter(t => {
+    const url = (t.url || '').toLowerCase();
+    const fname = (t.filename || t.title || '').toLowerCase();
+    return url.includes(query) || fname.includes(query);
+  });
   if (filtered.length === 0) {
     list.innerHTML = '';
     $('emptyState').style.display = 'block';
@@ -977,6 +984,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (e) { console.warn('Sparkline init failed', e); }
   // M-1: Settings Tab 切换初始化
   initSettingsTabs();
+  // M-3: 搜索栏实时过滤
+  const _searchInput = $('searchInput');
+  if (_searchInput) _searchInput.addEventListener('input', () => renderTasks());
   // P0 修复: fnOS WebView inline onclick 失效
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
   document.querySelectorAll('[onclick]:not(#settingsBtn)').forEach(el => {
