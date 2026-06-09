@@ -536,6 +536,7 @@ const startSSE = () => {
 
 // ── init ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  console.log('[fnytdlp] init started, DOMContentLoaded OK');
   // init sparklines
   try {
     sparkActive = new Sparkline('sparkActive', { max: 30, color: 'hsl(217, 91%, 60%)' });
