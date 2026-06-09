@@ -18,8 +18,21 @@
       display: flex; align-items: center; justify-content: center;
       color: white; font-size: 0.85rem; font-weight: 900;
       box-shadow: 0 0 12px rgba(255, 0, 0, 0.3);
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-    .yt-logo-emoji { width: 18px; height: 18px; }
+    .yt-logo:hover {
+      transform: scale(1.08);
+      box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+    }
+    .sponsor-btn-yt {
+      background: linear-gradient(135deg, #ff4444, #cc0000) !important;
+      color: white !important;
+      font-weight: 600 !important;
+    }
+    .sponsor-btn-yt:hover {
+      background: linear-gradient(135deg, #ff6666, #ee0000) !important;
+      box-shadow: 0 2px 12px rgba(255, 0, 0, 0.4) !important;
+    }
   </style>
 </head>
 <body>
@@ -43,8 +56,7 @@
       </div>
       <div class="header-actions">
         <button class="btn-icon" id="themeBtn" title="切换主题" onclick="toggleTheme()">☀️</button>
-        <button class="btn-icon" id="cookieBtn" title="Cookie 管理" onclick="showCookieModal()">🍪</button>
-        <button class="btn-icon" id="settingsBtn" title="设置">⚙️</button>
+        <button class="btn-icon" id="sponsorBtn" title="赞助" onclick="showModal('sponsorModal')">❤</button>
       </div>
     </div>
   </header>
@@ -321,6 +333,34 @@
       <button class="btn btn-danger" onclick="confirmDelete(true)">删除记录+文件</button>
     </div>
   </div>
+</div>
+
+<!-- Sponsor Modal -->
+<div id="sponsorModal" class="modal-overlay sponsor-modal" onclick="if(event.target===this)hideModal('sponsorModal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">❤️ 感谢您的支持</div>
+      <button class="btn-icon" onclick="hideModal('sponsorModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="sponsor-subtitle">您的赞助是我持续开发的最大动力</p>
+      <div class="sponsor-qr-row">
+        <div class="sponsor-qr-item">
+          <p>支付宝</p>
+          <img src="images/sponsor_alipay.png" alt="支付宝赞助" onclick="showImgFull(this)">
+        </div>
+        <div class="sponsor-qr-item">
+          <p class="wx">微信</p>
+          <img class="wx" src="images/sponsor_wechat.png" alt="微信赞助" onclick="showImgFull(this)">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Image Full Overlay -->
+<div id="imgFullOverlay" class="img-full-overlay" onclick="if(event.target===this)this.classList.remove('show')">
+  <img id="imgFull" alt="大图" onclick="event.stopPropagation()">
 </div>
 
 <!-- Toast Container -->

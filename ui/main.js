@@ -507,6 +507,16 @@ const deleteCookie = async () => {
 };
 window.deleteCookie = deleteCookie;
 
+// ── Image Full Zoom ────────────────────────────────────────────────
+function showImgFull(img) {
+  const overlay = document.getElementById('imgFullOverlay');
+  const fullImg = document.getElementById('imgFull');
+  if (!overlay || !fullImg) return;
+  fullImg.src = img.src;
+  overlay.classList.add('show');
+}
+window.showImgFull = showImgFull;
+
 // ── Tabs ──────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
