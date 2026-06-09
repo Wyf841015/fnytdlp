@@ -108,8 +108,16 @@ const toast = (msg, type = 'info') => {
 };
 
 // ── modal helpers ──────────────────────────────────────────────────
-const showModal = (id) => $(id)?.classList.add('show');
-const hideModal = (id) => $(id)?.classList.remove('show');
+const showModal = (id) => {
+  const el = $(id);
+  console.log('[fnytdlp] showModal(' + id + ') el=', el ? el.tagName + '.' + el.className : 'NULL');
+  if (el) {
+    el.classList.add('active');
+    console.log('[fnytdlp]   → classList after:', Array.from(el.classList).join(','));
+    console.log('[fnytdlp]   → display:', getComputedStyle(el).display);
+  }
+};
+const hideModal = (id) => $(id)?.classList.remove('active');
 window.showModal = showModal;
 window.hideModal = hideModal;
 
@@ -253,6 +261,7 @@ const setKpi = (id, value) => {
 
 // ── 任务操作 ──────────────────────────────────────────────────────
 const showAddTaskModal = () => {
+  console.log('[fnytdlp] showAddTaskModal() called');
   $('addUrls').value = '';
   $('addFormat').value = '';
   $('addOutputTemplate').value = '';
@@ -545,13 +554,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     sparkTotal = new Sparkline('sparkTotal', { max: 30, color: 'hsl(40, 96%, 53%)' });
   } catch (e) { console.warn('Sparkline init failed', e); }
   // P0 修复: fnOS WebView inline onclick 失效
-  // 统一转 addEventListener, 用 new Function 原样执行 onclick 代码
-  // (跟浏览器自身对 onclick 的 eval 行为一致, 不依赖 window.X 检查)
+  // 方案: 直接 window[fnName](...args) 不依赖 eval/new Function
+  // 只有 event.target===this 的 modal overlay 才用 new Function 带 try-catch
   document.querySelectorAll('[onclick]').forEach(el => {
     const attr = el.getAttribute('onclick');
     el.removeAttribute('onclick');
     el.addEventListener('click', function(e) {
-      new Function('event', attr).call(this, e);
+      try {
+        // 如果含 event 引用 (modal overlay), 用 new Function + try-catch
+        if (attr.includes('event.target')) {
+          new Function('event', attr).call(this, e);
+          return;
+        }
+        // 否则直接 window[fnName](...args) — 无 eval
+        const m = attr.match(/^([a-zA-Z_]\w*)\((.*)\)$/);
+        if (m && typeof window[m[1]] === 'function') {
+          const args = m[2].trim() ? JSON.parse('[' + m[2] + ']') : [];
+          window[m[1]](...args);
+        } else {
+          // 兜底
+          new Function('event', attr).call(this, e);
+        }
+      } catch(err) {
+        console.error('[fnytdlp] onclick err:', attr, err);
+      }
     });
   });
   // load initial
