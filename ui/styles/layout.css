@@ -18,6 +18,7 @@
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   border-bottom: 1px solid var(--border-subtle);
   transition: background var(--t), border-color var(--t);
+  padding-top: env(safe-area-inset-top, 0);
 }
 
 .header-bar {
@@ -1322,9 +1323,10 @@ html[data-theme='light'] .task-item.selected {
     border-radius: 0 !important;
     max-width: 100% !important;
     width: 100% !important;
-    max-height: 100vh !important;
-    height: 100vh !important;
+    max-height: 100dvh !important;
+    height: 100dvh !important;
     margin: 0 !important;
+    padding-bottom: env(safe-area-inset-bottom, 0);
   }
   .modal-xl .modal,
   .modal-lg .modal {
