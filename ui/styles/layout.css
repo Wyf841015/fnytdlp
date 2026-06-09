@@ -871,16 +871,20 @@ html[data-theme='light'] .task-item.selected {
 }
 .empty-actions {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 24px;
   flex-wrap: wrap;
   justify-content: center;
   align-items: center;
 }
 .empty-actions .btn {
-  flex: 1;
+  width: 140px;
+  padding: 8px 20px;
   justify-content: center;
-  text-align: center;
+}
+.empty-actions .btn-primary,
+.empty-actions .btn-ghost {
+  width: 140px;
 }
 .empty-tips {
   display: flex;
