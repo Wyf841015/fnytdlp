@@ -880,7 +880,11 @@ const handle = async (req, res) => {
     // ── system ──
     else if (pathname === '/api/health') {
       let appVersion = '0.0.0';
-      try { const p = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8')); appVersion = p.version || '0.0.0'; } catch(e) {}
+      try {
+        const m = fs.readFileSync(path.join(__dirname, '../manifest'), 'utf8');
+        const ver = m.match(/^version\s*=\s*(\S+)/m);
+        appVersion = ver ? ver[1] : '0.0.0';
+      } catch(e) {}
       sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: fs.existsSync(YT_DLP_BIN), ffmpegExists: fs.existsSync(FFMPEG_BIN), version: appVersion });
     } else if (pathname === '/api/events') {
       handleSSE(req, res);
