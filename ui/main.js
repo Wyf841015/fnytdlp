@@ -20,7 +20,12 @@ const API = {
     const url = this._url(path);
     try {
       const r = await fetch(url, { credentials: 'same-origin' });
-      if (!r.ok) { console.error('[API.get] HTTP', r.status, url); throw new Error('HTTP ' + r.status); }
+      if (!r.ok) {
+        let errMsg = 'HTTP ' + r.status;
+        try { const j = await r.json(); if (j && j.error) errMsg = j.error; } catch (e) {}
+        console.error('[API.get] HTTP', r.status, url, errMsg);
+        throw new Error(errMsg);
+      }
       return r.json();
     } catch (e) {
       console.error('[API.get] failed', url, e);
@@ -36,7 +41,12 @@ const API = {
         credentials: 'same-origin',
         body: JSON.stringify(body || {}),
       });
-      if (!r.ok) { console.error('[API.post] HTTP', r.status, url); throw new Error('HTTP ' + r.status); }
+      if (!r.ok) {
+        let errMsg = 'HTTP ' + r.status;
+        try { const j = await r.json(); if (j && j.error) errMsg = j.error; } catch (e) {}
+        console.error('[API.post] HTTP', r.status, url, errMsg);
+        throw new Error(errMsg);
+      }
       return r.json();
     } catch (e) {
       console.error('[API.post] failed', url, e);
@@ -51,13 +61,21 @@ const API = {
       credentials: 'same-origin',
       body: JSON.stringify(body || {}),
     });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (!r.ok) {
+      let errMsg = 'HTTP ' + r.status;
+      try { const j = await r.json(); if (j && j.error) errMsg = j.error; } catch (e) {}
+      throw new Error(errMsg);
+    }
     return r.json();
   },
   async del(path) {
     const url = this._url(path);
     const r = await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (!r.ok) {
+      let errMsg = 'HTTP ' + r.status;
+      try { const j = await r.json(); if (j && j.error) errMsg = j.error; } catch (e) {}
+      throw new Error(errMsg);
+    }
     return r.json();
   },
 };

@@ -243,7 +243,10 @@ const listCookies = () => (config.cookies || []).map(c => ({ name: c.name, domai
 const addCookie = (name, domain, content) => {
   ensureCookiesDir();
   if (!name || typeof name !== 'string') throw new Error('name required');
-  if (!content || !content.includes('\t')) throw new Error('Invalid cookie content (must be tab-separated Netscape format)');
+  // 校验: 必须含 tab 分隔的 Netscape 格式; 若无 tab 至少 20 字符 (兜底)
+  if (!content || (!content.includes('\t') && content.length < 20)) {
+    throw new Error('Invalid cookie content (must be tab-separated Netscape format, e.g. ".example.com\\tTRUE\\t/\\tFALSE\\t0\\tNAME\\tVALUE")');
+  }
   const list = config.cookies || [];
   const idx = list.findIndex(c => c.name === name);
   const entry = { name, domain: domain || '' };
