@@ -117,11 +117,11 @@
     </div>
 
     <!-- Filter Tabs -->
-    <div class="tabs" id="filterTabs" role="tablist">
-      <button class="tab active" data-filter="all" role="tab" aria-selected="true" aria-label="全部任务">全部 <span class="count" id="countAll">0</span></button>
-      <button class="tab" data-filter="downloading" role="tab" aria-selected="false" aria-label="下载中任务">下载中 <span class="count" id="countActive">0</span></button>
-      <button class="tab" data-filter="completed" role="tab" aria-selected="false" aria-label="已完成任务">已完成 <span class="count" id="countDone">0</span></button>
-      <button class="tab" data-filter="error" role="tab" aria-selected="false" aria-label="出错任务">出错 <span class="count" id="countError">0</span></button>
+    <div class="tabs" id="filterTabs" role="tablist" aria-label="任务状态筛选">
+      <button class="tab active" data-filter="all" role="tab" aria-selected="true" aria-controls="taskList" tabindex="0" aria-label="全部任务">全部 <span class="count" id="countAll">0</span></button>
+      <button class="tab" data-filter="downloading" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="下载中任务">下载中 <span class="count" id="countActive">0</span></button>
+      <button class="tab" data-filter="completed" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="已完成任务">已完成 <span class="count" id="countDone">0</span></button>
+      <button class="tab" data-filter="error" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="出错任务">出错 <span class="count" id="countError">0</span></button>
     </div>
 
     <!-- Task List -->

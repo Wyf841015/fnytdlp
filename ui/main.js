@@ -794,12 +794,32 @@ function showTaskDetail(id) {
 window.showTaskDetail = showTaskDetail;
 
 // ── Tabs ──────────────────────────────────────────────────────────
+const switchTab = (tab) => {
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.remove('active');
+    t.setAttribute('aria-selected', 'false');
+    t.setAttribute('tabindex', '-1');
+  });
+  tab.classList.add('active');
+  tab.setAttribute('aria-selected', 'true');
+  tab.setAttribute('tabindex', '0');
+  currentFilter = tab.dataset.filter;
+  renderTasks();
+};
 document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    currentFilter = tab.dataset.filter;
-    renderTasks();
+  tab.addEventListener('click', () => switchTab(tab));
+  // 方向键 ←/→ 切换 + Home/End 跳首尾 (W3C ARIA tab pattern)
+  tab.addEventListener('keydown', (e) => {
+    const tabs = Array.from(document.querySelectorAll('.tab'));
+    let idx = tabs.indexOf(tab);
+    if (e.key === 'ArrowRight') idx = (idx + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') idx = (idx - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') idx = 0;
+    else if (e.key === 'End') idx = tabs.length - 1;
+    else return;
+    e.preventDefault();
+    switchTab(tabs[idx]);
+    tabs[idx].focus();
   });
 });
 
