@@ -1,0 +1,14 @@
+{
+    ".url": {
+        "fnytdlp.Application": {
+            "title": "视频下载器",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "url": "/app/fnytdlp",
+            "gatewaySocket": "fnytdlp.sock",
+            "gatewayPrefix": "/app/fnytdlp",
+            "allUsers": true,
+            "control": {"accessPerm": "editable"}
+        }
+    }
+}
