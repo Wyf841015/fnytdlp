@@ -82,6 +82,25 @@ const ts = () => {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
+// yt-dlp _speed_str 示例: "1.23MiB/s", "500KiB/s", "12.3MB/s", "Unknown B/s", "0KiB/s"
+const parseSpeed = (s) => {
+  if (!s || s === 'Unknown B/s' || s === 'N/A') return 0;
+  const m = String(s).match(/^([\d.]+)\s*(KiB|MiB|GiB|KB|MB|GB|B)\/s$/i);
+  if (!m) return 0;
+  const v = parseFloat(m[1]);
+  const unit = m[2].toUpperCase();
+  const mult = { B: 1, KB: 1024, MB: 1024**2, GB: 1024**3, KIB: 1024, MIB: 1024**2, GIB: 1024**3 }[unit] || 1;
+  return Math.round(v * mult);
+};
+// yt-dlp _eta_str 示例: "00:01:23", "01:23", "Unknown", "N/A"
+const parseDuration = (s) => {
+  if (!s || s === 'Unknown' || s === 'N/A') return 0;
+  const parts = String(s).split(':').map(n => parseInt(n, 10) || 0);
+  if (parts.length === 3) return parts[0]*3600 + parts[1]*60 + parts[2];
+  if (parts.length === 2) return parts[0]*60 + parts[1];
+  if (parts.length === 1) return parts[0];
+  return 0;
+};
 const LOG = (...args) => {
   const line = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
   fs.appendFileSync(LOG_FILE, ts() + ' ' + line + '\n');
@@ -267,6 +286,19 @@ const createTask = (url, options = {}) => {
 
 const listTasks = (filter = {}) => {
   let arr = Array.from(tasks.values());
+  // 兜底: completed 任务若 totalBytes=0 用 fs.statSync 读真实大小
+  for (const t of arr) {
+    if (t.status === 'completed' && (!t.totalBytes || t.totalBytes === 0) && t.filename) {
+      try {
+        const fp = path.join(config.downloadPath, t.filename);
+        const st = fs.statSync(fp);
+        if (st.isFile() && st.size > 0) {
+          t.totalBytes = st.size;
+          t.downloadedBytes = st.size;
+        }
+      } catch (e) {}
+    }
+  }
   if (filter.status) arr = arr.filter(t => filter.status.includes(t.status));
   // 排序: 活跃任务在前, 然后按 createdAt 倒序
   arr.sort((a, b) => {
@@ -323,7 +355,7 @@ const buildYtDlpArgs = (task) => {
   args.push('--newline');
   args.push('--no-colors');
   args.push('--no-warnings');
-  args.push('--progress-template', 'PROGRESS|%(progress._percent_str)s|DONE');
+  args.push('--progress-template', 'PROGRESS|%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|DONE');
   // 输出模板
   const outTpl = config.outputTemplate || DEFAULT_CONFIG.outputTemplate;
   args.push('-o', path.join(config.downloadPath, outTpl));
@@ -422,11 +454,18 @@ const startTask = (id) => {
   proc.stdout.on('data', (chunk) => {
     const text = chunk.toString('utf8');
     for (const line of text.split('\n')) {
-      // 解析 PROGRESS|XX.X%|DONE 进度行
+      // 解析 PROGRESS 行: PROGRESS|XX.X%|speed_str|eta_str|downloaded_bytes|total_bytes|total_bytes_estimate|DONE
       if (line.startsWith('PROGRESS|')) {
         const parts = line.split('|');
-        if (parts.length >= 3) {
+        if (parts.length >= 8) {
           task.progress = parseFloat(parts[1].replace('%','')) || 0;
+          task.speed = parseSpeed(parts[2]);
+          task.eta = parseDuration(parts[3]);
+          task.downloadedBytes = parseInt(parts[4], 10) || 0;
+          // total_bytes 为 0 时用 total_bytes_estimate (VOD 无 Content-Length 时)
+          const tbExact = parseInt(parts[5], 10) || 0;
+          const tbEst = parseInt(parts[6], 10) || 0;
+          task.totalBytes = tbExact || tbEst;
           task.updatedAt = Date.now();
           broadcast('task-progress', task);
         }
@@ -456,6 +495,17 @@ const startTask = (id) => {
       task.speed = 0;
       task.eta = 0;
       task.completedAt = Date.now();
+      // 兜底: 用 fs.statSync 读真实文件大小 (progress 模板里 total_bytes_estimate 可能为 0)
+      if (task.filename) {
+        const fp = path.join(config.downloadPath, task.filename);
+        try {
+          const st = fs.statSync(fp);
+          if (st.isFile() && st.size > 0) {
+            task.totalBytes = st.size;
+            task.downloadedBytes = st.size;
+          }
+        } catch (e) {}
+      }
       // 异步获取元数据 (title/duration/thumbnail)
       if (!task.title) {
         execFile(YT_DLP_BIN, ['--dump-json', '--no-download', '--no-warnings', task.url], { timeout: 10000 }, (err, stdout) => {
@@ -464,11 +514,19 @@ const startTask = (id) => {
             if (info.title) task.title = info.title;
             if (info.duration) task.duration = info.duration;
             if (info.thumbnail && !task.thumbnail) task.thumbnail = info.thumbnail;
+            // 优先用元数据里的 filesize (更准确)
+            if (info.filesize && info.filesize > 0) {
+              task.totalBytes = info.filesize;
+              task.downloadedBytes = info.filesize;
+            }
             task.updatedAt = Date.now();
             saveTasks();
             broadcast('task-updated', task);
           } catch (e) {}
         });
+      } else {
+        saveTasks();
+        broadcast('task-updated', task);
       }
     } else {
       task.status = 'error';
