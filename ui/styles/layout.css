@@ -207,7 +207,7 @@
 
 .kpi-card[data-kpi="active"] { --kpi-accent: hsl(217, 91%, 60%); }
 .kpi-card[data-kpi="speed"]  { --kpi-accent: hsl(152, 58%, 53%); }
-.kpi-card[data-kpi="downloaded"] { --kpi-accent: hsl(280, 60%, 65%); }
+.kpi-card[data-kpi="completed"] { --kpi-accent: hsl(280, 60%, 65%); }
 .kpi-card[data-kpi="total"]  { --kpi-accent: hsl(40, 96%, 53%); }
 
 .kpi-icon {

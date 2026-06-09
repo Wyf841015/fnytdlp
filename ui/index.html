@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="styles/tokens.css">
   <link rel="stylesheet" href="styles/components.css">
   <link rel="stylesheet" href="styles/layout.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
   <style>
     /* fnytdlp 特定微调 */
     .app-bg-yt { background: var(--bg); }
@@ -101,27 +102,27 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-group">
-        <button class="toolbar-btn primary" onclick="showAddTaskModal()">➕<span class="btn-text">添加</span></button>
-        <button class="toolbar-btn primary-outline" onclick="showInfoModal()">🔍<span class="btn-text">解析</span></button>
+        <button class="toolbar-btn primary" onclick="showAddTaskModal()" aria-label="添加下载任务">➕<span class="btn-text">添加</span></button>
+        <button class="toolbar-btn primary-outline" onclick="showInfoModal()" aria-label="解析视频 URL">🔍<span class="btn-text">解析</span></button>
       </div>
       <div class="toolbar-divider"></div>
       <div class="toolbar-group">
-        <button class="toolbar-btn danger" onclick="clearCompleted()" title="清理已完成">🗑<span class="btn-text">清理</span></button>
-        <button class="toolbar-btn danger" onclick="stopAll()" title="全部停止">⏹<span class="btn-text">全部停止</span></button>
+        <button class="toolbar-btn danger" onclick="clearCompleted()" title="清理已完成" aria-label="清理已完成任务">🗑<span class="btn-text">清理</span></button>
+        <button class="toolbar-btn danger" onclick="stopAll()" title="全部停止" aria-label="全部停止下载">⏹<span class="btn-text">全部停止</span></button>
       </div>
       <div class="toolbar-spacer"></div>
       <div class="toolbar-group">
-        <button class="toolbar-btn ghost" onclick="showSettingsModal()">⚙<span class="btn-text">设置</span></button>
-        <button class="toolbar-btn ghost" onclick="showCookieModal()">🍪<span class="btn-text">Cookie</span></button>
+        <button class="toolbar-btn ghost" onclick="showSettingsModal()" aria-label="打开设置">⚙<span class="btn-text">设置</span></button>
+        <button class="toolbar-btn ghost" onclick="showCookieModal()" aria-label="管理 Cookie">🍪<span class="btn-text">Cookie</span></button>
       </div>
     </div>
 
     <!-- Filter Tabs -->
-    <div class="tabs" id="filterTabs">
-      <button class="tab active" data-filter="all">全部 <span class="count" id="countAll">0</span></button>
-      <button class="tab" data-filter="downloading">下载中 <span class="count" id="countActive">0</span></button>
-      <button class="tab" data-filter="completed">已完成 <span class="count" id="countDone">0</span></button>
-      <button class="tab" data-filter="error">出错 <span class="count" id="countError">0</span></button>
+    <div class="tabs" id="filterTabs" role="tablist">
+      <button class="tab active" data-filter="all" role="tab" aria-selected="true" aria-label="全部任务">全部 <span class="count" id="countAll">0</span></button>
+      <button class="tab" data-filter="downloading" role="tab" aria-selected="false" aria-label="下载中任务">下载中 <span class="count" id="countActive">0</span></button>
+      <button class="tab" data-filter="completed" role="tab" aria-selected="false" aria-label="已完成任务">已完成 <span class="count" id="countDone">0</span></button>
+      <button class="tab" data-filter="error" role="tab" aria-selected="false" aria-label="出错任务">出错 <span class="count" id="countError">0</span></button>
     </div>
 
     <!-- Task List -->
@@ -141,7 +142,7 @@
   <!-- 页脚 -->
   <div class="footer">
     <p class="mb-0">
-      <i class="fas fa-code me-2"></i>fnytdlp - 视频下载器 v0.1.0 |
+      <i class="fas fa-code me-2"></i>fnytdlp - 视频下载器 <span id="headerVersion">v0.1.0</span> |
       <i class="fas fa-heart me-2"></i>Powered by yt-dlp & Node.js
     </p>
     <p class="mb-0 mt-1">
@@ -503,6 +504,23 @@
 
 <!-- Toast Container -->
 <div id="toastContainer" class="toast-container"></div>
+
+<!-- 通用确认弹窗 -->
+<div class="modal-overlay" id="confirmModal" onclick="if(event.target===this)_confirmResolve(false)">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <span class="modal-title" id="confirmTitle">确认</span>
+      <button class="btn-icon" onclick="_confirmResolve(false)" aria-label="取消">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirmMessage"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="_confirmResolve(false)">取消</button>
+      <button class="btn btn-danger" onclick="_confirmResolve(true)">确认删除</button>
+    </div>
+  </div>
+</div>
 
 <script src="util/sparkline.js"></script>
 <script src="main.js"></script>

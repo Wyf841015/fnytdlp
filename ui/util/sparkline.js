@@ -86,8 +86,8 @@ class Sparkline {
 
     // Draw gradient fill under the line
     const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, this._hexToRgba(color, 0.35));
-    grad.addColorStop(1, this._hexToRgba(color, 0));
+    grad.addColorStop(0, this._toRgba(color, 0.35));
+    grad.addColorStop(1, this._toRgba(color, 0));
 
     ctx.beginPath();
     ctx.moveTo(offsetX, h);
@@ -125,14 +125,20 @@ class Sparkline {
     ctx.fill();
   }
 
-  _hexToRgba(hex, alpha) {
-    if (!hex || !hex.startsWith('#')) return `rgba(62, 185, 95, ${alpha})`;
-    let h = hex.replace('#', '');
-    if (h.length === 3) h = h.split('').map(c => c + c).join('');
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  _toRgba(color, alpha) {
+    if (!color) return `rgba(62, 185, 95, ${alpha})`;
+    if (color.startsWith('#')) {
+      let h = color.replace('#', '');
+      if (h.length === 3) h = h.split('').map(c => c + c).join('');
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    if (color.startsWith('hsl(')) {
+      return color.replace('hsl(', 'hsla(').replace(')', `, ${alpha})`);
+    }
+    return `rgba(62, 185, 95, ${alpha})`;
   }
 }
 

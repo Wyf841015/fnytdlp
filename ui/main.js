@@ -118,10 +118,12 @@ const toast = (msg, type = 'info') => {
   const c = $('toastContainer');
   if (!c) return;
   const el = document.createElement('div');
-  el.className = `toast toast-${type}`;
+  const cssType = type === 'warn' ? 'warning' : type;
+  el.className = 'toast ' + cssType;
   el.textContent = msg;
   c.appendChild(el);
-  setTimeout(() => el.classList.add('toast-out'), 2400);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => el.classList.remove('show'), 2400);
   setTimeout(() => el.remove(), 3000);
 };
 
@@ -138,6 +140,21 @@ const showModal = (id) => {
 const hideModal = (id) => $(id)?.classList.remove('active');
 window.showModal = showModal;
 window.hideModal = hideModal;
+
+// ── 通用确认弹窗 ───────────────────────────────────────────────
+let _confirmResolve = null;
+const showConfirm = (title, message) => {
+  return new Promise(resolve => {
+    _confirmResolve = (val) => {
+      _confirmResolve = null;
+      hideModal('confirmModal');
+      resolve(val);
+    };
+    $('confirmTitle').textContent = title;
+    $('confirmMessage').textContent = message;
+    showModal('confirmModal');
+  });
+};
 
 // ── 主题切换 (HSL 系统, 跟 fnm3u8dl 一致) ──────────────────────
 const THEMES = ['dark', 'light'];
@@ -178,6 +195,8 @@ updateClock();
 // ── 任务加载 + 渲染 ──────────────────────────────────────────────
 const loadTasks = async () => {
   try {
+    const list = $('taskList');
+    list.innerHTML = '<div class="loading-spinner">加载中...</div>';
     const data = await API.get('/api/tasks');
     tasks = data.tasks || [];
     renderTasks();
@@ -411,20 +430,28 @@ window.confirmDelete = confirmDelete;
 
 const clearCompleted = async () => {
   const completed = tasks.filter(t => t.status === 'completed' || t.status === 'error');
+  let ok = 0;
   for (const t of completed) {
-    await API.del(`/api/tasks/${t.id}`);
+    try {
+      await API.del(`/api/tasks/${t.id}`);
+      ok++;
+    } catch (e) { console.warn('clearCompleted task', t.id, 'failed', e); }
   }
-  toast(`已清理 ${completed.length} 个完成/出错任务`, 'success');
+  toast(`已清理 ${completed.length} 个任务${ok < completed.length ? ` (${ok} 成功)` : ''}`, ok === completed.length ? 'success' : 'warn');
   await loadTasks();
 };
 window.clearCompleted = clearCompleted;
 
 const stopAll = async () => {
   const downloading = tasks.filter(t => t.status === 'downloading' || t.status === 'pending');
+  let ok = 0;
   for (const t of downloading) {
-    await API.post(`/api/tasks/${t.id}/stop`, {});
+    try {
+      await API.post(`/api/tasks/${t.id}/stop`, {});
+      ok++;
+    } catch (e) { console.warn('stopAll task', t.id, 'failed', e); }
   }
-  toast(`已停止 ${downloading.length} 个任务`, 'success');
+  toast(`已停止 ${downloading.length} 个任务${ok < downloading.length ? ` (${ok} 成功)` : ''}`, ok === downloading.length ? 'success' : 'warn');
   await loadTasks();
 };
 window.stopAll = stopAll;
@@ -618,7 +645,7 @@ window.saveCookie = saveCookie;
 
 const deleteCookie = async (name) => {
   if (!name) return;
-  if (!confirm(`确认删除 Cookie "${name}"?`)) return;
+  if (!await showConfirm('删除 Cookie', `确认删除 Cookie "${name}"?`)) return;
   const r = await API.del('/api/cookies/' + encodeURIComponent(name));
   if (r.ok) {
     toast(`Cookie "${name}" 已删除`, 'success');
@@ -688,14 +715,18 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 // ── SSE 实时进度 ─────────────────────────────────────────────────
 // ── SSE 指数退避 ──────────────────────────────────────────────
+let _eventSource = null;  // for beforeunload cleanup
+let _sseReconnecting = false;  // P2: 重连闭锁
 let sseRetryCount = 0;
 const SSE_RETRY_MAX = 60000;  // 最大 60s
 const startSSE = () => {
-  sseRetryCount = 0;  // P2-1: 成功连接后重置退避计数
-  const es = new EventSource(GATEWAY_BASE + '/api/events');
-  es.addEventListener('task-created', () => loadTasks());
-  es.addEventListener('task-updated', () => loadTasks());
-  es.addEventListener('task-progress', (e) => {
+  sseRetryCount = 0;
+  if (_eventSource) _eventSource.close();
+  _sseReconnecting = false;  // 重置闭锁
+  _eventSource = new EventSource(GATEWAY_BASE + '/api/events');
+  _eventSource.addEventListener('task-created', () => loadTasks());
+  _eventSource.addEventListener('task-updated', () => loadTasks());
+  _eventSource.addEventListener('task-progress', (e) => {
     const t = JSON.parse(e.data);
     const i = tasks.findIndex(x => x.id === t.id);
     if (i >= 0) tasks[i] = { ...tasks[i], ...t };
@@ -703,18 +734,20 @@ const startSSE = () => {
     updateKpi();
     renderTasks();
   });
-  es.addEventListener('task-deleted', (e) => {
+  _eventSource.addEventListener('task-deleted', (e) => {
     const { id } = JSON.parse(e.data);
     tasks = tasks.filter(x => x.id !== id);
     renderTasks();
     updateKpi();
   });
-  // P2-1: SSE 指数退避（初始 5s, 逐次翻倍, 最大 60s）
-  es.onerror = (e) => {
+  _eventSource.onerror = (e) => {
+    if (_sseReconnecting) return;  // P2: 闭锁, 防重复
+    _sseReconnecting = true;
     sseRetryCount++;
     const delay = Math.min(5000 * Math.pow(2, sseRetryCount - 1), SSE_RETRY_MAX);
     console.warn(`SSE error (attempt ${sseRetryCount}), retrying in ${delay/1000}s`, e);
-    es.close();
+    _eventSource.close();
+    _eventSource = null;
     setTimeout(startSSE, delay);
   };
 };
@@ -778,8 +811,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     const h = await API.get('/api/health');
     if (h.ytDlpExists) $('headerSubtitle').textContent = `yt-dlp ${h.arch} · ffmpeg ${h.ffmpegExists ? '✓' : '✗'}`;
+    if (h.version) $('headerVersion').textContent = 'v' + h.version;
   } catch (e) {}
 });
+// cleanup on page unload
+window.addEventListener('beforeunload', () => { if (_eventSource) _eventSource.close(); });
 
 // 导出 updateKpi 的 setKpi 给 KPI 数字加 bump 动画
 const _origUpdateKpi = updateKpi;

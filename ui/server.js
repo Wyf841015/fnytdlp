@@ -879,7 +879,9 @@ const handle = async (req, res) => {
     }
     // ── system ──
     else if (pathname === '/api/health') {
-      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: fs.existsSync(YT_DLP_BIN), ffmpegExists: fs.existsSync(FFMPEG_BIN) });
+      let appVersion = '0.0.0';
+      try { const p = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8')); appVersion = p.version || '0.0.0'; } catch(e) {}
+      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: fs.existsSync(YT_DLP_BIN), ffmpegExists: fs.existsSync(FFMPEG_BIN), version: appVersion });
     } else if (pathname === '/api/events') {
       handleSSE(req, res);
     }

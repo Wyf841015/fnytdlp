@@ -745,3 +745,25 @@ html[data-theme='light'] .toast.info {
 
 /* ===== Sponsor Section ===== */
 /* ===== end ===== */
+
+/* ===== Loading State ===== */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.loading-spinner {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+.loading-spinner::before {
+  content: '';
+  display: block;
+  width: 24px;
+  height: 24px;
+  margin: 0 auto 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
