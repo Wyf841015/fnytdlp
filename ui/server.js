@@ -49,12 +49,12 @@ const BASE_PATH = '/app/fnytdlp';
 
 // ── yt-dlp binary 路径 (自适应 x86_64 / aarch64) ─────────────────
 // 启动时根据 process.arch 选对应 binary:
-//   - x64   → cmd/bin/yt-dlp-x86_64
-//   - arm64 → cmd/bin/yt-dlp-aarch64
-//   - 其他  → 兜底 cmd/bin/yt-dlp
+//   - x64   → bin/yt-dlp-x86_64
+//   - arm64 → bin/yt-dlp-aarch64
+//   - 其他  → 兜底 bin/yt-dlp
 // 注: zipimport 模式 binary 内容是平台无关 Python 脚本, 同份文件可在 x86_64 / aarch64 都跑
 // 但保留两个不同文件名方便用户/系统明确知道运行在哪个架构, 未来可替换为 musl native binary
-const BIN_DIR = path.join(TARGET_DIR, 'cmd', 'bin');
+const BIN_DIR = path.join(__dirname, 'bin');
 const pickYtDlpBin = () => {
   if (process.env.YT_DLP_BIN) return process.env.YT_DLP_BIN;  // 用户环境变量优先
   const arch = process.arch;  // 'x64' / 'arm64' / 'ia32' / ...
