@@ -1413,20 +1413,44 @@ html[data-theme='light'] .task-item.selected {
   .form-group { min-width: 0; width: 100%; }
   .input, .textarea, select.input { font-size: 0.9rem; width: 100%; box-sizing: border-box; }
   .form-label { font-size: 0.82rem; }
-  .form-hint { font-size: 0.72rem; }
-  .form-section-title { font-size: 0.85rem; margin: 12px 0 6px; }
-  .checkbox-label { font-size: 0.82rem; }
+}
 
-  /* Empty state */
-  .empty-state { padding: 40px 16px; min-height: 240px; }
-  .empty-icon-wrap { width: 72px; height: 72px; }
-  .empty-icon { font-size: 2.4rem; }
-  .empty-title { font-size: 1.05rem; }
-  .empty-text { font-size: 0.82rem; }
-  .empty-actions { flex-direction: column; width: 100%; max-width: 240px; }
-  .empty-actions .btn { width: 100%; }
-  .empty-tips { gap: 6px; }
-  .empty-tip { font-size: 0.7rem; padding: 3px 8px; }
+/* ==== 360dp 极小屏适配 (M-4) - iPhone SE 1/2/3, Android compact ==== */
+@media (max-width: 360px) {
+  html { font-size: 12.5px; }
+  /* Header 进一步压缩 */
+  .header { height: 48px; }
+  .header-row { height: 48px; padding: 0 6px; gap: 4px; }
+  .header-logo { width: 24px; height: 24px; font-size: 0.6rem; }
+  .header-title { font-size: 0.8rem; }
+  .header-actions .btn-icon { width: 28px; height: 28px; padding: 4px; font-size: 0.85rem; }
+  /* Main 紧凑 */
+  .main { padding: 6px; }
+  /* KPI 单列布局避免挤压 */
+  .kpi-dashboard { grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px 6px 0; }
+  .kpi-card { padding: 6px; }
+  .kpi-value { font-size: 0.75rem; }
+  .kpi-label { font-size: 0.55rem; }
+  .kpi-icon { width: 20px; height: 20px; font-size: 0.7rem; }
+  /* Toolbar 进一步压缩 */
+  .toolbar { padding: 4px 6px; gap: 2px; width: calc(100% - 12px); }
+  .toolbar-btn { padding: 4px 6px; min-width: 30px; font-size: 0.8rem; }
+  /* Tabs 更紧凑 */
+  .tabs { gap: 2px; padding: 0 6px; }
+  .tab { padding: 4px 8px; font-size: 0.7rem; }
+  /* Task item */
+  .task-item { padding: 8px 10px; }
+  .task-actions .btn-icon-sm { width: 26px; height: 26px; padding: 3px; }
+  /* 状态栏紧凑 */
+  .status-bar { height: 28px; font-size: 0.7rem; padding: 0 10px; }
+  /* 搜索框紧凑 */
+  .search-input { padding: 8px 10px; }
+  /* Modal padding 减少 */
+  .modal { padding: 0 !important; }
+  .modal-body { padding: 12px !important; }
+  .modal-footer { padding: 8px 12px !important; }
+  /* Form */
+  .form-group { margin-bottom: 10px; }
 }
 
 .modal-footer .btn {
