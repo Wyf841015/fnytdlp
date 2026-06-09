@@ -1,0 +1,17 @@
+#!/bin/bash
+### This script is called after the user installs the application.
+### 推送安装统计至飞书多维表格
+
+# 如果是升级触发的安装回调，跳过（由upgrade_callback处理）
+if [ -n "${TRIM_OLD_APPVER:-}" ]; then
+    exit 0
+fi
+
+_LIB_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
+# shellcheck source=lib/feishu_push.sh
+source "${_LIB_DIR}/feishu_push.sh"
+
+# 飞书安装统计推送
+feishu_push_install "fnytdlp" "${TRIM_APPVER}" || true
+
+exit 0

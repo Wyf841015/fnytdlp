@@ -1,0 +1,12 @@
+#!/bin/bash
+### This script is called after the user upgrades the application.
+### 推送升级统计至飞书多维表格
+
+_LIB_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
+# shellcheck source=lib/feishu_push.sh
+source "${_LIB_DIR}/feishu_push.sh"
+
+# 飞书升级统计推送
+feishu_push_upgrade "fnytdlp" "${TRIM_OLD_APPVER}" "${TRIM_APPVER}" || true
+
+exit 0
