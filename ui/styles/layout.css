@@ -583,6 +583,21 @@ html[data-theme='light'] .task-item.selected {
   cursor: pointer;
   position: relative;
 }
+.task-row-2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.task-url-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
 
 /* Task headline (name + actions row) */
 .task-headline {

@@ -211,8 +211,8 @@ const renderTask = (t) => {
           <button class="btn-icon-sm" title="删除" onclick="deleteTask('${esc(t.id)}')">🗑</button>
         </div>
       </div>
-      <div class="task-row task-row-2">
-        <div class="task-url">${esc(t.url)}</div>
+      <div class="task-row-2">
+        <span class="task-url-text" title="${esc(t.url)}">${esc(t.url)}</span>
         ${statusBadge}
       </div>
       ${t.status === 'downloading' || t.status === 'processing' ? `
@@ -589,8 +589,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 否则直接 window[fnName](...args) — 无 eval
         const m = attr.match(/^([a-zA-Z_]\w*)\((.*)\)$/);
         if (m && typeof window[m[1]] === 'function') {
-          const args = m[2].trim() ? JSON.parse('[' + m[2] + ']') : [];
-          window[m[1]](...args);
+          const raw = m[2].trim();
+          if (raw) {
+            // 支持单引号参数 (如 'sponsorModal', 't_xxx')
+            const args = raw.split(',').map(s => {
+              s = s.trim();
+              if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
+                return s.slice(1, -1);
+              }
+              // 数字/布尔/对象
+              try { return JSON.parse(s); } catch (e) { return s; }
+            });
+            window[m[1]](...args);
+          } else {
+            window[m[1]]();
+          }
         } else {
           // 兜底
           new Function('event', attr).call(this, e);
