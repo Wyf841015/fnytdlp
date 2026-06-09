@@ -272,6 +272,15 @@ const renderTask = (t) => {
   const title = t.filename || t.url;
   const showActions = t.status === 'error' || t.status === 'stopped' || t.status === 'paused';
   const canStop = t.status === 'downloading' || t.status === 'pending' || t.status === 'processing';
+  // M-8: 已用时间 (用 t.createdAt 计算, downloading/processing 状态时显示)
+  const isActive = t.status === 'downloading' || t.status === 'processing';
+  let elapsed = '';
+  if (isActive && t.createdAt) {
+    const ms = Date.now() - new Date(t.createdAt).getTime();
+    elapsed = `<span class="task-elapsed">⏳ 已用 ${formatDuration(Math.floor(ms / 1000))}</span>`;
+  }
+  // M-8: Cookie 任务徽章 (任务级 cookieName = 加密会员)
+  const cookieBadge = t.cookieName ? `<span class="badge-encrypted" title="使用 Cookie: ${esc(t.cookieName)}">🔒 ${esc(t.cookieName)}</span>` : '';
 
   return `
     <div class="task-item" data-id="${esc(t.id)}" role="button" tabindex="0" aria-label="任务: ${esc(t.title || title)}" onclick="showTaskDetail('${esc(t.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showTaskDetail('${esc(t.id)}')}">
@@ -286,8 +295,9 @@ const renderTask = (t) => {
       <div class="task-row-2">
         <span class="task-url-text" title="${esc(t.url)}">${esc(t.url)}</span>
         ${statusBadge}
+        ${cookieBadge}
       </div>
-      ${t.status === 'downloading' || t.status === 'processing' ? `
+      ${isActive ? `
         <div class="task-progress">
           <div class="progress-track"><div class="progress-fill" style="width:${progressPct}%"></div></div>
           <div class="task-percent">${progressPct}%</div>
@@ -296,6 +306,7 @@ const renderTask = (t) => {
           <span class="task-speed">⚡ ${speed}</span>
           <span class="task-eta">⏱ 剩余 ${eta}</span>
           <span>${downloaded} / ${total}</span>
+          ${elapsed}
         </div>
       ` : ''}
       ${t.error ? `<div class="task-error">${esc(t.error)}</div>` : ''}
@@ -987,6 +998,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // M-3: 搜索栏实时过滤
   const _searchInput = $('searchInput');
   if (_searchInput) _searchInput.addEventListener('input', () => renderTasks());
+  // M-8: 每 30s 刷新一次"已用时间"显示
+  setInterval(() => {
+    if (tasks.some(t => t.status === 'downloading' || t.status === 'processing')) {
+      scheduleRender();
+    }
+  }, 30000);
   // P0 修复: fnOS WebView inline onclick 失效
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
   document.querySelectorAll('[onclick]:not(#settingsBtn)').forEach(el => {
