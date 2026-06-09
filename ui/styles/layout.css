@@ -1061,6 +1061,16 @@ html[data-theme='light'] .task-item.selected {
   text-align: center;
 }
 
+/* ===== Footer ===== */
+.footer {
+  text-align: center;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.footer p { margin-bottom: 0; }
+
 /* ===== Responsive — Tablet & Below ===== */
 @media (max-width: 768px) {
   .header {
