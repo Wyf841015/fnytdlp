@@ -347,11 +347,11 @@
       <div class="sponsor-qr-row">
         <div class="sponsor-qr-item">
           <p>支付宝</p>
-          <img src="images/sponsor_alipay.png" alt="支付宝赞助" onclick="showImgFull(this)">
+          <img src="images/sponsor_alipay.png" alt="支付宝赞助" loading="lazy" onclick="try{showImgFull(this)}catch(e){console.error(e)}">
         </div>
         <div class="sponsor-qr-item">
           <p class="wx">微信</p>
-          <img class="wx" src="images/sponsor_wechat.png" alt="微信赞助" onclick="showImgFull(this)">
+          <img class="wx" src="images/sponsor_wechat.png" alt="微信赞助" loading="lazy" onclick="try{showImgFull(this)}catch(e){console.error(e)}">
         </div>
       </div>
     </div>
@@ -361,6 +361,34 @@
 <!-- Image Full Overlay -->
 <div id="imgFullOverlay" class="img-full-overlay" onclick="if(event.target===this)this.classList.remove('show')">
   <img id="imgFull" alt="大图" onclick="event.stopPropagation()">
+</div>
+
+<!-- Task Detail Modal -->
+<div class="modal-overlay" id="taskDetailModal" onclick="if(event.target===this)hideModal('taskDetailModal')">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">📋 任务详情</span>
+      <button class="btn-icon" onclick="hideModal('taskDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="taskDetailBody">
+      <div class="info-row"><span class="info-label">ID</span><span class="info-value" id="tdId">-</span></div>
+      <div class="info-row"><span class="info-label">标题</span><span class="info-value" id="tdTitle">-</span></div>
+      <div class="info-row"><span class="info-label">URL</span><span class="info-value mono" id="tdUrl" style="word-break:break-all">-</span></div>
+      <div class="info-row"><span class="info-label">文件名</span><span class="info-value mono" id="tdFilename">-</span></div>
+      <div class="info-row"><span class="info-label">文件大小</span><span class="info-value" id="tdSize">-</span></div>
+      <div class="info-row"><span class="info-label">已下载</span><span class="info-value" id="tdDownloaded">-</span></div>
+      <div class="info-row"><span class="info-label">存储位置</span><span class="info-value mono" id="tdLocation" style="word-break:break-all">-</span></div>
+      <div class="info-row"><span class="info-label">状态</span><span class="info-value" id="tdStatus">-</span></div>
+      <div class="info-row"><span class="info-label">进度</span><span class="info-value" id="tdProgress">-</span></div>
+      <div class="info-row"><span class="info-label">格式</span><span class="info-value" id="tdFormat">-</span></div>
+      <div class="info-row"><span class="info-label">创建时间</span><span class="info-value" id="tdCreated">-</span></div>
+      <div class="info-row"><span class="info-label">完成时间</span><span class="info-value" id="tdCompleted">-</span></div>
+      <div class="info-row" id="tdErrorRow" style="display:none"><span class="info-label">错误信息</span><span class="info-value" id="tdError" style="color:var(--color-danger)">-</span></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="hideModal('taskDetailModal')">关闭</button>
+    </div>
+  </div>
 </div>
 
 <!-- Toast Container -->

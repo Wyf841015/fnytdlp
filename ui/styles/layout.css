@@ -490,7 +490,9 @@
   border-radius: var(--radius);
   padding: 16px 20px;
   transition: border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast);
-  cursor: default;
+  cursor: pointer;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .task-item:hover {
@@ -588,6 +590,8 @@ html[data-theme='light'] .task-item.selected {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .task-url-text {
   flex: 1;
@@ -1589,6 +1593,30 @@ html[data-theme='light'] .task-item.selected {
   transform: scale(1.04);
   box-shadow: 0 8px 24px rgba(0,0,0,0.25);
 }
+
+/* ===== Task Detail Modal ===== */
+.info-row {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.info-row:last-child { border-bottom: none; }
+.info-label {
+  flex: 0 0 80px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.info-value {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+.info-value.mono { font-family: var(--font-mono); font-size: 0.78rem; }
 
 /* ===== Image Full Overlay ===== */
 .img-full-overlay {

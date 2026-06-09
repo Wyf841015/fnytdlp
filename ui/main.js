@@ -202,10 +202,10 @@ const renderTask = (t) => {
   const canStop = t.status === 'downloading' || t.status === 'pending' || t.status === 'processing';
 
   return `
-    <div class="task-item" data-id="${esc(t.id)}">
+    <div class="task-item" data-id="${esc(t.id)}" onclick="showTaskDetail('${esc(t.id)}')">
       <div class="task-row task-row-1">
         <div class="task-title">${esc(t.title || title)}</div>
-        <div class="task-actions">
+        <div class="task-actions" onclick="event.stopPropagation()">
           ${showActions ? `<button class="btn-icon-sm" title="重试" onclick="retryTask('${esc(t.id)}')">🔄</button>` : ''}
           ${canStop ? `<button class="btn-icon-sm" title="停止" onclick="stopTask('${esc(t.id)}')">⏹</button>` : ''}
           <button class="btn-icon-sm" title="删除" onclick="deleteTask('${esc(t.id)}')">🗑</button>
@@ -520,6 +520,42 @@ function showImgFull(img) {
   overlay.classList.add('show');
 }
 window.showImgFull = showImgFull;
+
+// ── Task Detail Modal ──────────────────────────────────────────────
+function showTaskDetail(id) {
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+  const setText = (eid, v) => { const el = $(eid); if (el) el.textContent = v; };
+  setText('tdId', t.id);
+  setText('tdTitle', t.title || '(无标题)');
+  setText('tdUrl', t.url);
+  setText('tdFilename', t.filename || '(下载中...)');
+  setText('tdSize', t.totalBytes ? formatBytes(t.totalBytes) : (t.downloadedBytes ? formatBytes(t.downloadedBytes) : '?'));
+  setText('tdDownloaded', t.downloadedBytes ? formatBytes(t.downloadedBytes) : '0 B');
+  setText('tdLocation', '(加载中...)');
+  // 异步加载 downloadPath
+  API.get('/api/config').then(cfg => {
+    window._config = cfg;
+    const dlPath = cfg.downloadPath;
+    setText('tdLocation', dlPath ? (t.filename ? (dlPath + '/' + t.filename) : dlPath) : '(默认下载目录)');
+  }).catch(() => {
+    setText('tdLocation', t.filename ? t.filename : '(默认下载目录)');
+  });
+  setText('tdStatus', ({pending:'⏳ 等待',downloading:'⏬ 下载中',processing:'🔄 处理',completed:'✅ 已完成',error:'❌ 出错',paused:'⏸ 暂停',stopped:'⏹ 停止'})[t.status] || t.status);
+  setText('tdProgress', (t.progress || 0).toFixed(1) + '%' + (t.speed ? ` · ⚡ ${formatSpeed(t.speed)}` : ''));
+  setText('tdFormat', t.format || t.ext || '-');
+  setText('tdCreated', t.createdAt ? new Date(t.createdAt).toLocaleString('zh-CN') : '-');
+  setText('tdCompleted', t.completedAt ? new Date(t.completedAt).toLocaleString('zh-CN') : '-');
+  const errRow = $('tdErrorRow');
+  if (t.error) {
+    setText('tdError', t.error);
+    if (errRow) errRow.style.display = 'flex';
+  } else if (errRow) {
+    errRow.style.display = 'none';
+  }
+  showModal('taskDetailModal');
+}
+window.showTaskDetail = showTaskDetail;
 
 // ── Tabs ──────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
