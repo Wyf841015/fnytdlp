@@ -219,6 +219,7 @@ const loadTasks = async () => {
     tasks = data.tasks || [];
     renderTasks();
     updateKpi();
+    updateStatusBar();
   } catch (e) {
     console.error('loadTasks failed', e);
     // 后端故障 / 离线时给用户明确反馈 (P2 修复)
@@ -320,6 +321,34 @@ const setKpi = (id, value) => {
     el.textContent = value;
     el.classList.add('bump');
     setTimeout(() => el.classList.remove('bump'), 300);
+  }
+};
+
+// ── 底部状态栏更新 (M-2) ─────────────────────────────────────
+const updateStatusBar = () => {
+  const stats = $('statusStats');
+  const text = $('statusText');
+  const ind = $('statusIndicator');
+  if (!stats || !text || !ind) return;
+  const total = tasks.length;
+  const downloading = tasks.filter(t => t.status === 'downloading' || t.status === 'recording').length;
+  const completed = tasks.filter(t => t.status === 'completed').length;
+  const error = tasks.filter(t => t.status === 'error').length;
+  stats.textContent = `总计 ${total} · 下载 ${downloading} · 完成 ${completed}${error ? ' · 失败 ' + error : ''}`;
+  // 状态指示
+  ind.classList.remove('active', 'busy', 'idle');
+  if (downloading > 0) {
+    ind.classList.add('busy');
+    text.textContent = `下载中 (${downloading})`;
+  } else if (error > 0) {
+    ind.classList.add('idle');
+    text.textContent = `有 ${error} 个失败任务`;
+  } else if (total === 0) {
+    ind.classList.add('idle');
+    text.textContent = '空闲';
+  } else {
+    ind.classList.add('active');
+    text.textContent = `就绪 (${total})`;
   }
 };
 
@@ -851,6 +880,7 @@ const scheduleRender = () => {
     _renderTimer = null;
     renderTasks();
     updateKpi();
+    updateStatusBar();
   });
 };
 // ── SSE 指数退避 ──────────────────────────────────────────────
