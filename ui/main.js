@@ -485,23 +485,60 @@ const showSettingsModal = async () => {
   $('setWriteAutoSubs').checked = !!cfg.writeAutoSubs;
   $('setWriteThumbnail').checked = !!cfg.writeThumbnail;
   $('setNoPlaylist').checked = !!cfg.noPlaylist;
+  $('setEmbedSubs').checked = !!cfg.embedSubs;
+  $('setEmbedThumbnail').checked = !!cfg.embedThumbnail;
+  $('setExtractAudio').checked = !!cfg.extractAudio;
+  $('setAudioMultistreams').checked = !!cfg.audioMultistreams;
+  $('setMtime').checked = cfg.mtime !== false;  // 默认 true
+  // 高级 8 字段
+  $('setLimitRate').value = cfg.limitRate || '';
+  $('setSubLangs').value = cfg.subLangs || '';
+  $('setAudioFormat').value = cfg.audioFormat || '';
+  $('setAudioQuality').value = cfg.audioQuality || '';
+  $('setMergeOutputFormat').value = cfg.mergeOutputFormat || '';
+  $('setConvertSubs').value = cfg.convertSubs || '';
+  $('setDownloadArchive').value = cfg.downloadArchive || '';
+  $('setMaxDownloads').value = cfg.maxDownloads || 0;
+  $('setDateAfter').value = cfg.dateAfter || '';
+  $('setDateBefore').value = cfg.dateBefore || '';
+  $('setMinFilesize').value = cfg.minFilesize || '';
+  $('setMaxFilesize').value = cfg.maxFilesize || '';
+  $('setMatchFilters').value = cfg.matchFilters || '';
   showModal('settingsModal');
 };
 const saveSettings = async () => {
   try {
     const cfg = {
-    downloadPath: $('setDownloadPath').value.trim(),
-    concurrentDownloads: parseInt($('setConcurrent').value) || 3,
-    concurrentFragments: parseInt($('setConcurrentFragments').value) || 4,
-    format: $('setFormat').value.trim(),
-    formatSort: $('setFormatSort').value.trim(),
-    retries: parseInt($('setRetries').value) || 3,
-    proxyUrl: $('setProxyUrl').value.trim(),
-    embedMetadata: $('setEmbedMetadata').checked,
-    writeSubs: $('setWriteSubs').checked,
-    writeAutoSubs: $('setWriteAutoSubs').checked,
-    writeThumbnail: $('setWriteThumbnail').checked,
-    noPlaylist: $('setNoPlaylist').checked,
+      downloadPath: $('setDownloadPath').value.trim(),
+      concurrentDownloads: parseInt($('setConcurrent').value) || 3,
+      concurrentFragments: parseInt($('setConcurrentFragments').value) || 4,
+      format: $('setFormat').value.trim(),
+      formatSort: $('setFormatSort').value.trim(),
+      retries: parseInt($('setRetries').value) || 3,
+      proxyUrl: $('setProxyUrl').value.trim(),
+      embedMetadata: $('setEmbedMetadata').checked,
+      writeSubs: $('setWriteSubs').checked,
+      writeAutoSubs: $('setWriteAutoSubs').checked,
+      writeThumbnail: $('setWriteThumbnail').checked,
+      noPlaylist: $('setNoPlaylist').checked,
+      embedSubs: $('setEmbedSubs').checked,
+      embedThumbnail: $('setEmbedThumbnail').checked,
+      extractAudio: $('setExtractAudio').checked,
+      audioMultistreams: $('setAudioMultistreams').checked,
+      mtime: $('setMtime').checked,
+      limitRate: $('setLimitRate').value.trim(),
+      subLangs: $('setSubLangs').value.trim(),
+      audioFormat: $('setAudioFormat').value.trim(),
+      audioQuality: $('setAudioQuality').value.trim(),
+      mergeOutputFormat: $('setMergeOutputFormat').value.trim(),
+      convertSubs: $('setConvertSubs').value.trim(),
+      downloadArchive: $('setDownloadArchive').value.trim(),
+      maxDownloads: parseInt($('setMaxDownloads').value) || 0,
+      dateAfter: $('setDateAfter').value.trim(),
+      dateBefore: $('setDateBefore').value.trim(),
+      minFilesize: $('setMinFilesize').value.trim(),
+      maxFilesize: $('setMaxFilesize').value.trim(),
+      matchFilters: $('setMatchFilters').value.trim(),
     };
     const r = await API.post('/api/config', cfg);
     if (r && r.ok) { hideModal('settingsModal'); toast('设置已保存', 'success'); }

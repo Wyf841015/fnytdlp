@@ -283,7 +283,84 @@
         <label class="form-label form-label-inline"><input type="checkbox" id="setWriteAutoSubs"> 自动字幕</label>
         <label class="form-label form-label-inline"><input type="checkbox" id="setWriteThumbnail"> 缩略图</label>
         <label class="form-label form-label-inline"><input type="checkbox" id="setNoPlaylist"> 单视频</label>
+        <label class="form-label form-label-inline"><input type="checkbox" id="setEmbedSubs"> 字幕嵌入</label>
+        <label class="form-label form-label-inline"><input type="checkbox" id="setEmbedThumbnail"> 缩略图嵌入</label>
+        <label class="form-label form-label-inline"><input type="checkbox" id="setExtractAudio"> 仅音频</label>
+        <label class="form-label form-label-inline"><input type="checkbox" id="setAudioMultistreams"> 多音轨</label>
+        <label class="form-label form-label-inline"><input type="checkbox" id="setMtime"> mtime=视频发布时间</label>
       </div>
+      <details class="form-advanced">
+        <summary>高级 (限速/字幕/音频/合并/过滤/增量)</summary>
+        <div class="form-row">
+          <div class="form-group form-group-half">
+            <label class="form-label">限速 (--limit-rate)</label>
+            <input class="input" id="setLimitRate" placeholder="例: 5M / 500K / 2.5M">
+            <div class="form-hint">空 = 不限速</div>
+          </div>
+          <div class="form-group form-group-half">
+            <label class="form-label">字幕语言 (--sub-langs)</label>
+            <input class="input" id="setSubLangs" placeholder="例: zh-Hans,en / all,-live_chat">
+            <div class="form-hint">需先勾"下载字幕"</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group form-group-half">
+            <label class="form-label">音频格式 (--audio-format)</label>
+            <input class="input" id="setAudioFormat" placeholder="例: mp3 / m4a / opus / flac">
+            <div class="form-hint">需勾"仅音频"</div>
+          </div>
+          <div class="form-group form-group-half">
+            <label class="form-label">音频质量 (--audio-quality)</label>
+            <input class="input" id="setAudioQuality" placeholder="例: 128K / 0 (0=最佳 10=最差)">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group form-group-half">
+            <label class="form-label">合并输出 (--merge-output-format)</label>
+            <input class="input" id="setMergeOutputFormat" placeholder="例: mp4 / mkv / mp4/mkv">
+          </div>
+          <div class="form-group form-group-half">
+            <label class="form-label">字幕转换 (--convert-subs)</label>
+            <input class="input" id="setConvertSubs" placeholder="例: srt / vtt / ass">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group form-group-half">
+            <label class="form-label">下载归档 (--download-archive)</label>
+            <input class="input" id="setDownloadArchive" placeholder="例: archive.txt (避免重复下载)">
+            <div class="form-hint">已下过的视频 ID 自动跳过, 路径存于应用数据目录</div>
+          </div>
+          <div class="form-group form-group-half">
+            <label class="form-label">最大下载数 (--max-downloads)</label>
+            <input class="input" type="number" id="setMaxDownloads" min="0" placeholder="0=不限">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group form-group-half">
+            <label class="form-label">起始日期 (--dateafter)</label>
+            <input class="input" id="setDateAfter" placeholder="YYYYMMDD 或 today-1week">
+          </div>
+          <div class="form-group form-group-half">
+            <label class="form-label">截止日期 (--datebefore)</label>
+            <input class="input" id="setDateBefore" placeholder="YYYYMMDD 或 today">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group form-group-half">
+            <label class="form-label">最小大小 (--min-filesize)</label>
+            <input class="input" id="setMinFilesize" placeholder="例: 50k / 10M">
+          </div>
+          <div class="form-group form-group-half">
+            <label class="form-label">最大大小 (--max-filesize)</label>
+            <input class="input" id="setMaxFilesize" placeholder="例: 500M / 2G">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">复杂过滤 (--match-filters)</label>
+          <input class="input" id="setMatchFilters" placeholder="例: !is_live & like_count&gt;?100 & duration&lt;600">
+          <div class="form-hint">用 & 组合多个条件, 字段参考 yt-dlp OUTPUT TEMPLATE</div>
+        </div>
+      </details>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="hideModal('settingsModal')">取消</button>

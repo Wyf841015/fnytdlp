@@ -163,6 +163,25 @@ const DEFAULT_CONFIG = {
   noPlaylist: false,
   // Cookie 多网站列表: [{name, domain}] (文件存于 cookies/<safeName>.txt)
   cookies: [],
+  // 新增 12 个参数 (2025-06-09 批量增强)
+  limitRate: '',                   // --limit-rate 例 '5M' '500K', 空=不限速
+  subLangs: '',                    // --sub-langs 例 'zh-Hans,en,en-US' 或 'all,-live_chat'
+  extractAudio: false,             // -x 提取音频
+  audioFormat: '',                 // --audio-format 例 'mp3' 'm4a' 'opus' 'flac'
+  audioQuality: '',                // --audio-quality 例 '128K' '0' (0=best 10=worst)
+  embedSubs: false,                // --embed-subs 把字幕嵌入视频文件
+  embedThumbnail: false,           // --embed-thumbnail 把缩略图嵌入视频
+  mergeOutputFormat: '',           // --merge-output-format 例 'mp4' 'mkv' 'mp4/mkv'
+  downloadArchive: '',             // --download-archive 文件路径, 空=不启用
+  mtime: true,                     // --no-mtime 反向: true=用 Last-Modified, false=用下载时间
+  matchFilters: '',                // --match-filters 例 '!is_live & like_count>?100'
+  dateAfter: '',                   // --dateafter YYYYMMDD 或 'today-1week'
+  dateBefore: '',                  // --datebefore YYYYMMDD
+  minFilesize: '',                 // --min-filesize 例 '50k' '10M'
+  maxFilesize: '',                 // --max-filesize 例 '2G'
+  maxDownloads: 0,                 // --max-downloads 0=不限
+  convertSubs: '',                 // --convert-subs 例 'srt' 'vtt' (空=不转换)
+  audioMultistreams: false,        // --audio-multistreams 多音轨合并
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -440,7 +459,46 @@ const buildYtDlpArgs = (task) => {
   if (config.proxyUrl) args.push('--proxy', config.proxyUrl);
   // Playlist
   if (config.noPlaylist) args.push('--no-playlist');
-  // 限制单视频 (用 --no-playlist 强过 playlist URL)
+  // ── 新增 12 参数 (2025-06-09) ───────────────────────────────────
+  // 限速
+  if (config.limitRate) args.push('--limit-rate', String(config.limitRate));
+  // 字幕语言
+  if (config.subLangs && (config.writeSubs || config.writeAutoSubs)) {
+    args.push('--sub-langs', String(config.subLangs));
+  }
+  // 提取音频
+  if (config.extractAudio) {
+    args.push('-x');
+    if (config.audioFormat) args.push('--audio-format', String(config.audioFormat));
+    if (config.audioQuality) args.push('--audio-quality', String(config.audioQuality));
+  }
+  // 多音轨合并
+  if (config.audioMultistreams) args.push('--audio-multistreams');
+  // 嵌入字幕到视频
+  if (config.embedSubs && (config.writeSubs || config.writeAutoSubs)) args.push('--embed-subs');
+  // 嵌入缩略图到视频
+  if (config.embedThumbnail) args.push('--embed-thumbnail');
+  // 合并输出格式
+  if (config.mergeOutputFormat) args.push('--merge-output-format', String(config.mergeOutputFormat));
+  // 增量下载 (避免重复)
+  if (config.downloadArchive) {
+    const ap = path.isAbsolute(config.downloadArchive) ? config.downloadArchive : path.join(DATA_DIR, config.downloadArchive);
+    args.push('--download-archive', ap);
+  }
+  // mtime: true=用 Last-Modified (默认), false=用下载时间
+  if (!config.mtime) args.push('--no-mtime');
+  // 复杂过滤
+  if (config.matchFilters) args.push('--match-filters', String(config.matchFilters));
+  // 日期范围
+  if (config.dateAfter) args.push('--dateafter', String(config.dateAfter));
+  if (config.dateBefore) args.push('--datebefore', String(config.dateBefore));
+  // 大小过滤
+  if (config.minFilesize) args.push('--min-filesize', String(config.minFilesize));
+  if (config.maxFilesize) args.push('--max-filesize', String(config.maxFilesize));
+  // 限数量
+  if (config.maxDownloads && config.maxDownloads > 0) args.push('--max-downloads', String(config.maxDownloads));
+  // 字幕格式转换
+  if (config.convertSubs) args.push('--convert-subs', String(config.convertSubs));
   // URL
   args.push(task.url);
   return args;
@@ -769,7 +827,7 @@ const handle = async (req, res) => {
     }
     // ── config API ──
     else if (pathname === '/api/config' && req.method === 'GET') {
-      sendJSON(res, 200, { ...config, cookiesEnabled: config.cookiesEnabled && fs.existsSync(COOKIES_FILE) });
+      sendJSON(res, 200, { ...config });
     } else if (pathname === '/api/config' && req.method === 'POST') {
       const body = await parseBody(req);
       const newCfg = { ...config, ...body };
