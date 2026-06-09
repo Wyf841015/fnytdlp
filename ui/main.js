@@ -845,15 +845,17 @@ const startSSE = () => {
   _eventSource.addEventListener('task-created', () => loadTasks());
   _eventSource.addEventListener('task-updated', () => loadTasks());
   _eventSource.addEventListener('task-progress', (e) => {
-    const t = JSON.parse(e.data);
+    let t;
+    try { t = JSON.parse(e.data); } catch (err) { console.warn('SSE task-progress parse failed', e.data?.slice?.(0, 200), err); return; }
     const i = tasks.findIndex(x => x.id === t.id);
     if (i >= 0) tasks[i] = { ...tasks[i], ...t };
     else tasks.push(t);
     scheduleRender();
   });
   _eventSource.addEventListener('task-deleted', (e) => {
-    const { id } = JSON.parse(e.data);
-    tasks = tasks.filter(x => x.id !== id);
+    let payload;
+    try { payload = JSON.parse(e.data); } catch (err) { console.warn('SSE task-deleted parse failed', e.data?.slice?.(0, 200), err); return; }
+    tasks = tasks.filter(x => x.id !== payload.id);
     scheduleRender();
   });
   _eventSource.onerror = (e) => {
@@ -864,9 +866,11 @@ const startSSE = () => {
     console.warn(`SSE error (attempt ${sseRetryCount}), retrying in ${delay/1000}s`, e);
     _eventSource.close();
     _eventSource = null;
-    setTimeout(startSSE, delay);
+    _sseRetryTimer = setTimeout(startSSE, delay);  // 保存 timer 句柄供 beforeunload 清理
   };
 };
+// 跟踪 SSE 重连 timer 供 beforeunload 清理
+let _sseRetryTimer = null;
 
 // ── init ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -936,7 +940,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (e) {}
 });
 // cleanup on page unload
-window.addEventListener('beforeunload', () => { if (_eventSource) _eventSource.close(); });
+window.addEventListener('beforeunload', () => {
+  if (_eventSource) _eventSource.close();
+  if (_sseRetryTimer) clearTimeout(_sseRetryTimer);
+  // 4 个 Sparkline 清理 setInterval
+  [sparkActive, sparkSpeed, sparkCompleted, sparkTotal].forEach(s => s?.stop?.());
+});
 
 // 导出 updateKpi 的 setKpi 给 KPI 数字加 bump 动画
 const _origUpdateKpi = updateKpi;
