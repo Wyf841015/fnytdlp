@@ -1043,6 +1043,18 @@ html[data-theme='light'] .task-item.selected {
   padding: 16px 24px;
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* Modal: small (confirm dialogs) */
+.modal-sm {
+  max-width: 380px;
+}
+.modal-sm .modal-footer { justify-content: center; }
+.modal-sm .modal-footer .btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
 }
 
 /* ===== Responsive — Tablet & Below ===== */
