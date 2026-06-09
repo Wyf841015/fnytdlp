@@ -135,9 +135,29 @@ const showModal = (id) => {
     el.classList.add('active');
     console.log('[fnytdlp]   → classList after:', Array.from(el.classList).join(','));
     console.log('[fnytdlp]   → display:', getComputedStyle(el).display);
+    // a11y: 焦点陷阱 + Escape 关闭
+    el._escListener = (e) => { if (e.key === 'Escape') hideModal(id); };
+    document.addEventListener('keydown', el._escListener);
+    // 记录打开前焦点, 关闭后还原
+    el._prevFocus = document.activeElement;
+    // 自动聚焦第一个可聚焦元素
+    setTimeout(() => {
+      const focusable = el.querySelector('input, textarea, select, button, [tabindex]:not([tabindex="-1"])');
+      if (focusable) focusable.focus();
+    }, 50);
   }
 };
-const hideModal = (id) => $(id)?.classList.remove('active');
+const hideModal = (id) => {
+  const el = $(id);
+  if (!el) return;
+  el.classList.remove('active');
+  // 清理 Escape 监听 + 还原焦点
+  if (el._escListener) {
+    document.removeEventListener('keydown', el._escListener);
+    el._escListener = null;
+  }
+  if (el._prevFocus && el._prevFocus.focus) el._prevFocus.focus();
+};
 window.showModal = showModal;
 window.hideModal = hideModal;
 
