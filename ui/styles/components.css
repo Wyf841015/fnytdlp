@@ -148,6 +148,65 @@ body {
   color: var(--text-dim);
 }
 
+/* Input group (input + button inline) */
+.input-group {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.input-group .input {
+  flex: 1;
+  min-width: 0;
+}
+.input-group .browse-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+}
+
+/* Browse directory modal */
+.browse-current-path {
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-family: monospace;
+  word-break: break-all;
+  margin-bottom: 8px;
+}
+.browse-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.browse-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+  transition: background var(--t-fast);
+  border-bottom: 1px solid var(--border);
+}
+.browse-item:last-child { border-bottom: none; }
+.browse-item:hover { background: var(--bg-hover); }
+.browse-item .browse-icon { flex-shrink: 0; font-size: 1rem; }
+.browse-item .browse-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-item.browse-up { color: var(--accent); font-weight: 600; }
+.browse-loading {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
 .textarea {
   resize: vertical;
   min-height: 80px;

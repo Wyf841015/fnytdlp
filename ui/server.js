@@ -815,6 +815,42 @@ const handle = async (req, res) => {
       const ok = deleteTask(id, { deleteFile: delFile });
       sendJSON(res, 200, { ok });
     }
+    // ── browse (目录浏览, 用于路径选择对话框) ──
+    // 不限制白名单, 用户可浏览任意目录, "选择当前目录"通过 POST /api/config
+    // 保存路径时由 P1-4 逻辑允许任何 downloadPath
+    else if (pathname === '/api/browse' && req.method === 'GET') {
+      const u = new URL(req.url, 'http://localhost');
+      const browsePath = u.searchParams.get('path') || config.downloadPath || DATA_DIR;
+      try {
+        const resolved = path.resolve(browsePath);
+        if (!fs.existsSync(resolved)) {
+          return sendJSON(res, 404, { error: '路径不存在', path: resolved });
+        }
+        const stat = fs.statSync(resolved);
+        if (!stat.isDirectory()) {
+          return sendJSON(res, 400, { error: '不是目录', path: resolved });
+        }
+        const entries = fs.readdirSync(resolved);
+        const dirs = [];
+        for (const name of entries) {
+          if (name.startsWith('.')) continue;
+          try {
+            const full = path.join(resolved, name);
+            const s = fs.statSync(full);
+            if (s.isDirectory()) dirs.push({ name, path: full });
+          } catch {}
+        }
+        dirs.sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+        sendJSON(res, 200, {
+          currentPath: resolved,
+          parentPath: path.dirname(resolved),
+          directories: dirs,
+          isRoot: resolved === '/'
+        });
+      } catch (e) {
+        sendJSON(res, 500, { error: '读取目录失败: ' + e.message });
+      }
+    }
     // ── info / parse ──
     else if (pathname === '/api/info' && req.method === 'POST') {
       const body = await parseBody(req);

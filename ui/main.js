@@ -503,6 +503,73 @@ const submitInfo = async () => {
 window.submitInfo = submitInfo;
 
 // ── Settings Modal ────────────────────────────────────────────────
+// ── Browse Directory Modal ────────────────────────────────────────
+let _browsePath = '';
+
+const openBrowseModal = () => {
+  const input = $('setDownloadPath');
+  if (!input) return;
+  const currentPath = input.value.trim() || '/tmp/downloads';
+  _browsePath = currentPath;
+  showModal('browseModal');
+  loadBrowseDir(currentPath);
+};
+
+const loadBrowseDir = async (dirPath) => {
+  const list = $('browseList');
+  const pathEl = $('browseCurrentPath');
+  const selBtn = $('browseSelectBtn');
+  if (!list || !pathEl) return;
+  list.innerHTML = '<div class="browse-loading">加载中...</div>';
+  pathEl.textContent = dirPath;
+  if (selBtn) selBtn.disabled = true;
+  try {
+    const data = await API.get('/api/browse?path=' + encodeURIComponent(dirPath));
+    if (!data) throw new Error('empty response');
+    pathEl.textContent = data.currentPath;
+    _browsePath = data.currentPath;
+    if (selBtn) selBtn.disabled = false;
+    let html = '';
+    if (!data.isRoot && data.parentPath) {
+      html += `<div class="browse-item browse-up" onclick="browseGoUp('${escapeHtml(data.parentPath)}')">
+        <span class="browse-icon">📁</span>
+        <span class="browse-name">.. / 上级目录</span>
+      </div>`;
+    }
+    if (!data.directories || data.directories.length === 0) {
+      html += '<div style="text-align:center;padding:24px;color:var(--text-dim)">此目录下没有子目录</div>';
+    } else {
+      for (const d of data.directories) {
+        const safePath = escapeHtml(d.path);
+        const safeName = escapeHtml(d.name);
+        html += `<div class="browse-item" onclick="browseEnterDir('${safePath}')">
+          <span class="browse-icon">📁</span>
+          <span class="browse-name">${safeName}</span>
+        </div>`;
+      }
+    }
+    list.innerHTML = html;
+  } catch (err) {
+    const msg = (err && (err.error || err.message)) || '请求失败';
+    list.innerHTML = `<div style="text-align:center;padding:24px;color:var(--color-danger, #f56c6c)">❌ ${escapeHtml(msg)}</div>`;
+  }
+};
+
+const browseEnterDir = (path) => loadBrowseDir(path);
+const browseGoUp = (path) => loadBrowseDir(path);
+
+const browseSelectCurrent = () => {
+  const input = $('setDownloadPath');
+  if (input && _browsePath) input.value = _browsePath;
+  hideModal('browseModal');
+};
+
+const escapeHtml = (str) => {
+  const div = document.createElement('div');
+  div.appendChild(document.createTextNode(String(str)));
+  return div.innerHTML;
+};
+
 const showSettingsModal = async () => {
   const cfg = await API.get('/api/config');
   $('setDownloadPath').value = cfg.downloadPath || '';
@@ -581,6 +648,10 @@ const saveSettings = async () => {
   }
 };
 window.saveSettings = saveSettings;
+window.openBrowseModal = openBrowseModal;
+window.browseEnterDir = browseEnterDir;
+window.browseGoUp = browseGoUp;
+window.browseSelectCurrent = browseSelectCurrent;
 // 工具栏设置按钮用 onclick="showSettingsModal()" 已在 HTML 绑定
 
 // ── Cookie Modal (多网站) ─────────────────────────────────────────

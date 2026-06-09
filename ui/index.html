@@ -254,8 +254,11 @@
     <div class="modal-body">
       <div class="form-group">
         <label class="form-label">下载路径</label>
-        <input class="input" id="setDownloadPath" placeholder="/vol2/1000/fnytdlp/">
-        <div class="form-hint">所有视频文件保存到这里。建议放在 /vol<N>/1000/fnytdlp/ 这种大容量目录</div>
+        <div class="input-group">
+          <input class="input" id="setDownloadPath" placeholder="/vol2/1000/fnytdlp/">
+          <button type="button" class="btn btn-ghost browse-btn" onclick="openBrowseModal()">📂 浏览</button>
+        </div>
+        <div class="form-hint">所有视频文件保存到这里。建议放在 /vol&lt;N&gt;/1000/fnytdlp/ 这种大容量目录</div>
       </div>
       <div class="form-row">
         <div class="form-group form-group-half">
@@ -463,6 +466,26 @@
           <img class="wx" src="images/sponsor_wechat.png" alt="微信赞助" loading="lazy" onclick="try{showImgFull(this)}catch(e){console.error(e)}">
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Browse Directory Modal -->
+<div class="modal-overlay" id="browseModal" onclick="if(event.target===this)hideModal('browseModal')">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">📂 选择下载目录</span>
+      <button class="btn-icon" onclick="hideModal('browseModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="browse-current-path" id="browseCurrentPath">/</div>
+      <div class="browse-list" id="browseList">
+        <div class="browse-loading">加载中...</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="hideModal('browseModal')">取消</button>
+      <button class="btn btn-primary" id="browseSelectBtn" onclick="browseSelectCurrent()" disabled>选择当前目录</button>
     </div>
   </div>
 </div>
