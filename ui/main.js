@@ -6,33 +6,58 @@
 
 'use strict';
 
+console.log('[fnytdlp] main.js loaded, version=0.1.0');
+
 // ── API client (统一网关模式) ──────────────────────────────────────
 const GATEWAY_BASE = (typeof window !== 'undefined' && window.GATEWAY_BASE) || '/app/fnytdlp';
 const API = {
+  _url(path) {
+    // 绝对路径: 直接拼 GATEWAY_BASE + path
+    // 例: '/app/fnytdlp' + '/api/tasks' = '/app/fnytdlp/api/tasks'
+    return GATEWAY_BASE + (path.startsWith('/') ? path : '/' + path);
+  },
   async get(path) {
-    const r = await fetch(GATEWAY_BASE + path, { credentials: 'same-origin' });
-    return r.json();
+    const url = this._url(path);
+    try {
+      const r = await fetch(url, { credentials: 'same-origin' });
+      if (!r.ok) { console.error('[API.get] HTTP', r.status, url); throw new Error('HTTP ' + r.status); }
+      return r.json();
+    } catch (e) {
+      console.error('[API.get] failed', url, e);
+      throw e;
+    }
   },
   async post(path, body) {
-    const r = await fetch(GATEWAY_BASE + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify(body || {}),
-    });
-    return r.json();
+    const url = this._url(path);
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body || {}),
+      });
+      if (!r.ok) { console.error('[API.post] HTTP', r.status, url); throw new Error('HTTP ' + r.status); }
+      return r.json();
+    } catch (e) {
+      console.error('[API.post] failed', url, e);
+      throw e;
+    }
   },
   async put(path, body) {
-    const r = await fetch(GATEWAY_BASE + path, {
+    const url = this._url(path);
+    const r = await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify(body || {}),
     });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   },
   async del(path) {
-    const r = await fetch(GATEWAY_BASE + path, { method: 'DELETE', credentials: 'same-origin' });
+    const url = this._url(path);
+    const r = await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   },
 };
@@ -518,6 +543,32 @@ window.addEventListener('DOMContentLoaded', async () => {
     sparkCompleted = new Sparkline('sparkCompleted', { max: 30, color: 'hsl(280, 60%, 65%)' });
     sparkTotal = new Sparkline('sparkTotal', { max: 30, color: 'hsl(40, 96%, 53%)' });
   } catch (e) { console.warn('Sparkline init failed', e); }
+  // P0 修复: fnOS WebView inline onclick 不识别 window.X 函数
+  // → 统一转 addEventListener
+  // 参照 fnclearup-njs 修复模式 (memory: "IIFE 内 function 通过 inline onclick 调用无效")
+  document.querySelectorAll('[onclick]').forEach(el => {
+    const attr = el.getAttribute('onclick');
+    // 跳过事件依赖的 (modal overlay onclick="if(event.target===this)...")
+    if (attr.includes('event')) return;
+    const match = attr.match(/^([a-zA-Z_]\w*)\((.*)\)$/);
+    if (!match || typeof window[match[1]] !== 'function') return;
+    const fnName = match[1];
+    const argStr = match[2].trim();
+    el.removeAttribute('onclick');
+    if (argStr === '') {
+      // 无参: showAddTaskModal(), toggleTheme(), ...
+      el.addEventListener('click', () => window[fnName]());
+    } else {
+      // 带参数: hideModal('addTaskModal'), ...
+      try {
+        const args = JSON.parse('[' + argStr + ']');
+        el.addEventListener('click', () => window[fnName](...args));
+      } catch {
+        // JSON parse 失败, 用 Function 兜底
+        el.addEventListener('click', new Function('window.' + attr));
+      }
+    }
+  });
   // load initial
   await loadTasks();
   // poll every 3s as fallback
