@@ -299,7 +299,7 @@ const renderTask = (t) => {
       </div>
       ${isActive ? `
         <div class="task-progress">
-          <div class="progress-track"><div class="progress-fill" style="width:${progressPct}%"></div></div>
+          <div class="progress-track"><div class="progress-fill ${t.status === 'processing' ? 'tone-warning' : 'tone-success'}" style="width:${progressPct}%"></div></div>
           <div class="task-percent">${progressPct}%</div>
         </div>
         <div class="task-meta">
