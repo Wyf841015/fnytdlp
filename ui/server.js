@@ -311,9 +311,27 @@ const createTask = (url, options = {}) => {
 
 const listTasks = (filter = {}) => {
   let arr = Array.from(tasks.values());
-  // 兜底: completed 任务若 totalBytes=0 用 fs.statSync 读真实大小
+  // 兜底: completed 任务若 filename 为空, 从 downloadPath 找最新文件
   for (const t of arr) {
-    if (t.status === 'completed' && (!t.totalBytes || t.totalBytes === 0) && t.filename) {
+    if (t.status === 'completed' && !t.filename) {
+      try {
+        const files = fs.readdirSync(config.downloadPath)
+          .map(f => {
+            try {
+              const fp = path.join(config.downloadPath, f);
+              const st = fs.statSync(fp);
+              return { name: f, mtime: st.mtimeMs || 0, size: st.size };
+            } catch (e) { return null; }
+          })
+          .filter(x => x && x.size > 0 && !x.name.endsWith('.part') && !x.name.endsWith('.ytdl') && !x.name.startsWith('.'))
+          .sort((a, b) => b.mtime - a.mtime);
+        if (files.length > 0) {
+          t.filename = files[0].name;
+          t.totalBytes = files[0].size;
+          t.downloadedBytes = files[0].size;
+        }
+      } catch (e) {}
+    } else if (t.status === 'completed' && (!t.totalBytes || t.totalBytes === 0) && t.filename) {
       try {
         const fp = path.join(config.downloadPath, t.filename);
         const st = fs.statSync(fp);
@@ -522,6 +540,22 @@ const startTask = (id) => {
       task.eta = 0;
       task.completedAt = Date.now();
       // 兜底: 用 fs.statSync 读真实文件大小 (progress 模板里 total_bytes_estimate 可能为 0)
+      if (!task.filename) {
+        // 兜底 1: 下载目录里找最新文件 (yt-dlp --print 不可用时的备选)
+        try {
+          const files = fs.readdirSync(config.downloadPath)
+            .map(f => {
+              try {
+                const fp = path.join(config.downloadPath, f);
+                const st = fs.statSync(fp);
+                return { name: f, mtime: st.mtimeMs || 0, size: st.size };
+              } catch (e) { return null; }
+            })
+            .filter(x => x && x.size > 0 && !x.name.endsWith('.part') && !x.name.endsWith('.ytdl') && !x.name.startsWith('.'))
+            .sort((a, b) => b.mtime - a.mtime);
+          if (files.length > 0) task.filename = files[0].name;
+        } catch (e) {}
+      }
       if (task.filename) {
         const fp = path.join(config.downloadPath, task.filename);
         try {

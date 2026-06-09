@@ -533,18 +533,24 @@ const saveCookie = async () => {
   const name = $('cookieName').value.trim();
   const domain = $('cookieDomain').value.trim();
   const content = $('cookieContent').value.trim();
+  console.log('[fnytdlp] saveCookie called, name=', name, 'len=', content.length);
   if (!name) { toast('请输入 Cookie 名称', 'warn'); return; }
   if (!content) { toast('Cookie 内容不能为空', 'warn'); return; }
-  const r = await API.post('/api/cookies', { name, domain, content });
-  if (r.ok) {
-    toast(`Cookie "${name}" 已保存`, 'success');
-    $('cookieName').value = '';
-    $('cookieDomain').value = '';
-    $('cookieContent').value = '';
-    renderCookieList(r.cookies);
-    loadCookieSelect();
-  } else {
-    toast('保存失败: ' + (r.error || ''), 'error');
+  try {
+    const r = await API.post('/api/cookies', { name, domain, content });
+    if (r && r.ok) {
+      toast(`Cookie "${name}" 已保存`, 'success');
+      $('cookieName').value = '';
+      $('cookieDomain').value = '';
+      $('cookieContent').value = '';
+      renderCookieList(r.cookies);
+      loadCookieSelect().catch(() => {});
+    } else {
+      toast('保存失败: ' + (r && r.error || '未知错误'), 'error');
+    }
+  } catch (e) {
+    console.error('[fnytdlp] saveCookie error:', e);
+    toast('保存失败: ' + e.message, 'error');
   }
 };
 window.saveCookie = saveCookie;
