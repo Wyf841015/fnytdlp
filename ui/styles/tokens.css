@@ -16,6 +16,14 @@
   --accent-glow: hsl(var(--brand-h), var(--brand-s), var(--brand-l) / 0.2);
   --accent-border: hsl(var(--brand-h), 40%, 35% / 0.5);
 
+  /* Aliases (兼容 components.css/layout.css 旧引用, 11 处用到) */
+  --color-primary: hsl(var(--brand-h), var(--brand-s), var(--brand-l));
+  --color-danger: hsl(0, 84%, 60%);
+  --text-secondary: hsl(220, 10%, 62%);
+  --text-danger: hsl(0, 84%, 65%);
+  --text-subtle: hsl(220, 8%, 45%);
+  --radius-md: 12px;
+
   /* Backgrounds */
   --bg-deepest: hsl(230, 20%, 7%);
   --bg: hsl(230, 18%, 9%);
