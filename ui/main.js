@@ -244,7 +244,7 @@ const renderTask = (t) => {
   const canStop = t.status === 'downloading' || t.status === 'pending' || t.status === 'processing';
 
   return `
-    <div class="task-item" data-id="${esc(t.id)}" onclick="showTaskDetail('${esc(t.id)}')">
+    <div class="task-item" data-id="${esc(t.id)}" role="button" tabindex="0" aria-label="任务: ${esc(t.title || title)}" onclick="showTaskDetail('${esc(t.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showTaskDetail('${esc(t.id)}')}">
       <div class="task-row task-row-1">
         <div class="task-title">${esc(t.title || title)}</div>
         <div class="task-actions" onclick="event.stopPropagation()">
