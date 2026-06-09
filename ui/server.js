@@ -26,7 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 // ── paths ──────────────────────────────────────────────────────────────
@@ -319,16 +319,11 @@ const pauseTask = (id) => {
 const buildYtDlpArgs = (task) => {
   const args = [];
   const opts = task.options || {};
-  // 进度输出: 关键! 用 --newline + --progress-template 输出结构化进度行
-  // 格式: PROGRESS|{json}|DONE
+  // 进度输出: --progress-template stdout (不用 --print, 它会让 yt-dlp 变 dry-run)
   args.push('--newline');
   args.push('--no-colors');
   args.push('--no-warnings');
-  args.push('--progress-template', 'PROGRESS|%(progress._percent_str)s|%(progress._downloaded_bytes)j|%(progress._total_bytes)j|%(progress._speed)j|%(progress._eta)j|DONE');
-  args.push('--print', 'AFTER_OK:FILE:%(filename)j');
-  args.push('--print', 'AFTER_OK:FORMAT:%(format)j');
-  args.push('--print', 'AFTER_OK:EXT:%(ext)j');
-  args.push('--print', 'AFTER_OK:DUR:%(duration)j');
+  args.push('--progress-template', 'PROGRESS|%(progress._percent_str)s|DONE');
   // 输出模板
   const outTpl = config.outputTemplate || DEFAULT_CONFIG.outputTemplate;
   args.push('-o', path.join(config.downloadPath, outTpl));
@@ -426,28 +421,25 @@ const startTask = (id) => {
   let stderrBuf = '';
   proc.stdout.on('data', (chunk) => {
     const text = chunk.toString('utf8');
-    // 解析 PROGRESS|...|DONE 行
     for (const line of text.split('\n')) {
+      // 解析 PROGRESS|XX.X%|DONE 进度行
       if (line.startsWith('PROGRESS|')) {
         const parts = line.split('|');
-        // [PROGRESS, percent, downloaded, total, speed, eta, DONE]
-        if (parts.length >= 7) {
-          task.progress    = parseFloat(parts[1].replace('%','')) || 0;
-          task.downloadedBytes = parseInt(parts[2]) || 0;
-          task.totalBytes  = parseInt(parts[3]) || 0;
-          task.speed       = parseInt(parts[4]) || 0;
-          task.eta         = parseInt(parts[5]) || 0;
-          task.updatedAt   = Date.now();
+        if (parts.length >= 3) {
+          task.progress = parseFloat(parts[1].replace('%','')) || 0;
+          task.updatedAt = Date.now();
           broadcast('task-progress', task);
         }
-      } else if (line.startsWith('AFTER_OK:FILE:')) {
-        try { task.filename = JSON.parse(line.substring('AFTER_OK:FILE:'.length)); } catch (e) {}
-      } else if (line.startsWith('AFTER_OK:FORMAT:')) {
-        try { task.format = JSON.parse(line.substring('AFTER_OK:FORMAT:'.length)); } catch (e) {}
-      } else if (line.startsWith('AFTER_OK:EXT:')) {
-        try { task.ext = JSON.parse(line.substring('AFTER_OK:EXT:'.length)); } catch (e) {}
-      } else if (line.startsWith('AFTER_OK:DUR:')) {
-        try { task.duration = parseInt(JSON.parse(line.substring('AFTER_OK:DUR:'.length))) || 0; } catch (e) {}
+      }
+      // 解析 [download] Destination: ... → 获取文件名
+      if (line.startsWith('[download] Destination:')) {
+        const fp = line.substring('[download] Destination: '.length).trim();
+        if (fp) task.filename = path.basename(fp);
+      }
+      // 解析 [info] ... format(s): XXp → 获取格式
+      if (line.includes('Downloading') && line.includes('format(s):')) {
+        const fm = line.match(/format\(s\):\s*(.+)/);
+        if (fm) task.format = fm[1].trim();
       }
     }
   });
@@ -464,6 +456,20 @@ const startTask = (id) => {
       task.speed = 0;
       task.eta = 0;
       task.completedAt = Date.now();
+      // 异步获取元数据 (title/duration/thumbnail)
+      if (!task.title) {
+        execFile(YT_DLP_BIN, ['--dump-json', '--no-download', '--no-warnings', task.url], { timeout: 10000 }, (err, stdout) => {
+          if (!err) try {
+            const info = JSON.parse(stdout);
+            if (info.title) task.title = info.title;
+            if (info.duration) task.duration = info.duration;
+            if (info.thumbnail && !task.thumbnail) task.thumbnail = info.thumbnail;
+            task.updatedAt = Date.now();
+            saveTasks();
+            broadcast('task-updated', task);
+          } catch (e) {}
+        });
+      }
     } else {
       task.status = 'error';
       // P2: 错误脱敏 (提取最后一行有效 stderr)
