@@ -279,10 +279,10 @@ const updateKpi = () => {
   const total = tasks.length;
   const totalSpeed = tasks.reduce((sum, t) => sum + (t.speed || 0), 0);
 
-  $('kpiActive').textContent = active;
-  $('kpiSpeed').textContent = formatSpeed(totalSpeed);
-  $('kpiCompleted').textContent = completed;
-  $('kpiTotal').textContent = total;
+  setKpi('kpiActive', active);
+  setKpi('kpiSpeed', formatSpeed(totalSpeed));
+  setKpi('kpiCompleted', completed);
+  setKpi('kpiTotal', total);
 
   // Sparkline push
   if (sparkActive) sparkActive.push(active);
