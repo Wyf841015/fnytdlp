@@ -10,3 +10,4 @@ distributor           = 一零一二
 distributor_url       = https://gitee.com/wyf1015
 desktop_uidir         = ui
 desktop_applaunchname = fnytdlp.Application
+install_dep_apps      = nodejs_v24
