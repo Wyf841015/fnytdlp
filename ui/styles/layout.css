@@ -644,7 +644,7 @@ html[data-theme='light'] .task-item.selected {
   margin-bottom: 8px;
 }
 .task-info { flex: 1; min-width: 0; }
-.task-name {
+.task-title {
   font-size: 0.88rem;
   color: var(--text);
   font-weight: 600;
