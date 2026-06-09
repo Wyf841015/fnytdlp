@@ -1,0 +1,16 @@
+{
+  "name": "fnytdlp",
+  "version": "0.1.0",
+  "description": "yt-dlp GUI for fnOS, supports 1000+ sites with auto x86/arm binary selection",
+  "type": "module",
+  "main": "ui/server.js",
+  "scripts": {
+    "start": "node ui/server.js",
+    "test": "node --test tests/*.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT",
+  "dependencies": {}
+}

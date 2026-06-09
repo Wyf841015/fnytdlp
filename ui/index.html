@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="default">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>fnytdlp - 视频下载器</title>
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/layout.css">
+  <style>
+    /* fnytdlp 特定微调 */
+    .app-bg-yt { background: var(--bg); }
+    .yt-logo {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, #ff0000, #cc0000);
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 0.85rem; font-weight: 900;
+      box-shadow: 0 0 12px rgba(255, 0, 0, 0.3);
+    }
+    .yt-logo-emoji { width: 18px; height: 18px; }
+  </style>
+</head>
+<body>
+<div class="app app-bg-yt">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-bar"></div>
+    <div class="header-row">
+      <div class="header-left">
+        <div class="yt-logo">▶</div>
+        <div class="header-info">
+          <div class="header-title">fnytdlp</div>
+          <div class="header-subtitle" id="headerSubtitle">yt-dlp 视频下载器 · 1000+ 站点</div>
+        </div>
+      </div>
+      <div class="header-center">
+        <div class="header-clock">
+          <span class="clock-time" id="headerClockTime">--:--:--</span>
+          <span class="clock-date" id="headerClockDate">----年--月--日</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn-icon" id="themeBtn" title="切换主题" onclick="toggleTheme()">☀️</button>
+        <button class="btn-icon" id="cookieBtn" title="Cookie 管理" onclick="showCookieModal()">🍪</button>
+        <button class="btn-icon" id="settingsBtn" title="设置" onclick="showModal('settingsModal')">⚙️</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- KPI Dashboard -->
+    <div class="kpi-dashboard">
+      <div class="kpi-card" data-kpi="active">
+        <div class="kpi-icon">⏬</div>
+        <div class="kpi-content">
+          <div class="kpi-label">下载中</div>
+          <div class="kpi-value" id="kpiActive">0</div>
+        </div>
+        <canvas class="kpi-spark" id="sparkActive" width="60" height="24"></canvas>
+      </div>
+      <div class="kpi-card" data-kpi="speed">
+        <div class="kpi-icon">⚡</div>
+        <div class="kpi-content">
+          <div class="kpi-label">实时速度</div>
+          <div class="kpi-value" id="kpiSpeed">0 B/s</div>
+        </div>
+        <canvas class="kpi-spark" id="sparkSpeed" width="60" height="24"></canvas>
+      </div>
+      <div class="kpi-card" data-kpi="completed">
+        <div class="kpi-icon">✅</div>
+        <div class="kpi-content">
+          <div class="kpi-label">已完成</div>
+          <div class="kpi-value" id="kpiCompleted">0</div>
+        </div>
+        <canvas class="kpi-spark" id="sparkCompleted" width="60" height="24"></canvas>
+      </div>
+      <div class="kpi-card" data-kpi="total">
+        <div class="kpi-icon">📊</div>
+        <div class="kpi-content">
+          <div class="kpi-label">总任务数</div>
+          <div class="kpi-value" id="kpiTotal">0</div>
+        </div>
+        <canvas class="kpi-spark" id="sparkTotal" width="60" height="24"></canvas>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <button class="toolbar-btn primary" onclick="showAddTaskModal()">➕<span class="btn-text">添加</span></button>
+        <button class="toolbar-btn primary-outline" onclick="showInfoModal()">🔍<span class="btn-text">解析</span></button>
+      </div>
+      <div class="toolbar-divider"></div>
+      <div class="toolbar-group">
+        <button class="toolbar-btn danger" onclick="clearCompleted()" title="清理已完成">🗑<span class="btn-text">清理</span></button>
+        <button class="toolbar-btn danger" onclick="stopAll()" title="全部停止">⏹<span class="btn-text">全部停止</span></button>
+      </div>
+      <div class="toolbar-spacer"></div>
+      <div class="toolbar-group">
+        <button class="toolbar-btn ghost" onclick="showModal('settingsModal')">⚙<span class="btn-text">设置</span></button>
+        <button class="toolbar-btn ghost" onclick="showCookieModal()">🍪<span class="btn-text">Cookie</span></button>
+      </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="tabs" id="filterTabs">
+      <button class="tab active" data-filter="all">全部 <span class="count" id="countAll">0</span></button>
+      <button class="tab" data-filter="downloading">下载中 <span class="count" id="countActive">0</span></button>
+      <button class="tab" data-filter="completed">已完成 <span class="count" id="countDone">0</span></button>
+      <button class="tab" data-filter="error">出错 <span class="count" id="countError">0</span></button>
+    </div>
+
+    <!-- Task List -->
+    <div id="taskList" class="task-list"></div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state" style="display:none">
+      <div class="empty-icon">📥</div>
+      <div class="empty-title">还没有下载任务</div>
+      <div class="empty-text">点 "+ 添加" 粘贴视频链接开始</div>
+      <div class="empty-actions">
+        <button class="btn btn-primary" onclick="showAddTaskModal()">➕ 添加任务</button>
+        <button class="btn btn-ghost" onclick="showInfoModal()">🔍 解析 URL</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Add Task Modal -->
+<div class="modal-overlay" id="addTaskModal" onclick="if(event.target===this)hideModal('addTaskModal')">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">➕ 新建下载任务</span>
+      <button class="btn-icon" onclick="hideModal('addTaskModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">视频链接 <span class="text-danger">*</span></label>
+        <textarea class="input" id="addUrls" rows="3" placeholder="每行一个 URL, 支持 YouTube/B站/抖音/微博/X/西瓜 等 1000+ 站点..."></textarea>
+        <div class="form-hint">支持单 URL / 批量 (一行一个) / 播放列表</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">视频信息预览</label>
+        <div id="addPreview" class="info-preview">点 "解析" 按钮查看元数据</div>
+        <div style="margin-top:6px"><button class="btn btn-sm btn-ghost" onclick="parseUrls()">🔍 解析第一条</button></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">格式选择</label>
+        <select class="select" id="addFormat">
+          <option value="">使用默认 (设置里的格式)</option>
+          <option value="bv*+ba/b">最佳画质+音频 (默认)</option>
+          <option value="bv*+ba">最佳画质 + 最佳音频</option>
+          <option value="bv*+ba[acodec=mp3]">最佳画质 + MP3 音频</option>
+          <option value="b/b">最佳 (单文件)</option>
+          <option value="worst">最小体积</option>
+          <option value="bv*[height<=1080]+ba">1080p 限高</option>
+          <option value="bv*[height<=720]+ba">720p 限高</option>
+          <option value="bv*[height<=480]+ba">480p 限高</option>
+        </select>
+      </div>
+      <details class="form-advanced">
+        <summary>高级选项</summary>
+        <div class="form-group">
+          <label class="form-label">输出文件名模板</label>
+          <input class="input" id="addOutputTemplate" placeholder="%(title)s [%(id)s].%(ext)s" value="">
+          <div class="form-hint">空 = 跟设置里一致</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">SponsorBlock 标记 (用逗号分隔)</label>
+          <input class="input" id="addSponsorBlock" placeholder="sponsor,selfpromo,intro" value="">
+          <div class="form-hint">支持: sponsor / selfpromo / interaction / intro / outro / preview / music_offtopic</div>
+        </div>
+        <div class="form-group form-group-inline">
+          <label class="form-label form-label-inline">
+            <input type="checkbox" id="addEmbedMetadata" checked> 嵌入元数据
+          </label>
+          <label class="form-label form-label-inline">
+            <input type="checkbox" id="addWriteSubs"> 下载字幕
+          </label>
+          <label class="form-label form-label-inline">
+            <input type="checkbox" id="addWriteThumbnail" checked> 下载缩略图
+          </label>
+          <label class="form-label form-label-inline">
+            <input type="checkbox" id="addNoPlaylist"> 仅单视频 (不下载播放列表)
+          </label>
+        </div>
+      </details>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="hideModal('addTaskModal')">取消</button>
+      <button class="btn btn-primary" onclick="submitAddTask()">📥 开始下载</button>
+    </div>
+  </div>
+</div>
+
+<!-- Info Modal -->
+<div class="modal-overlay" id="infoModal" onclick="if(event.target===this)hideModal('infoModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">🔍 解析视频信息</span>
+      <button class="btn-icon" onclick="hideModal('infoModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input class="input" id="infoUrl" placeholder="https://...">
+      </div>
+      <div id="infoResult" class="info-preview" style="max-height:50vh;overflow-y:auto">输入 URL 点解析</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="hideModal('infoModal')">关闭</button>
+      <button class="btn btn-primary" onclick="submitInfo()">解析</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal" onclick="if(event.target===this)hideModal('settingsModal')">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">⚙️ 下载设置</span>
+      <button class="btn-icon" onclick="hideModal('settingsModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">下载路径</label>
+        <input class="input" id="setDownloadPath" placeholder="/vol2/1000/fnytdlp/">
+        <div class="form-hint">所有视频文件保存到这里。建议放在 /vol<N>/1000/fnytdlp/ 这种大容量目录</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group form-group-half">
+          <label class="form-label">同时下载任务数</label>
+          <input class="input" type="number" id="setConcurrent" min="1" max="10">
+        </div>
+        <div class="form-group form-group-half">
+          <label class="form-label">分片并发数</label>
+          <input class="input" type="number" id="setConcurrentFragments" min="1" max="16">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group form-group-half">
+          <label class="form-label">默认格式</label>
+          <input class="input" id="setFormat" placeholder="bv*+ba/b">
+          <div class="form-hint">yt-dlp 格式表达式</div>
+        </div>
+        <div class="form-group form-group-half">
+          <label class="form-label">格式排序</label>
+          <input class="input" id="setFormatSort" placeholder="res:1080,ext:mp4:m4a">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">重试次数</label>
+        <input class="input" type="number" id="setRetries" min="0" max="10">
+      </div>
+      <div class="form-group">
+        <label class="form-label">HTTP 代理 (可选)</label>
+        <input class="input" id="setProxyUrl" placeholder="http://127.0.0.1:7890">
+      </div>
+      <div class="form-group form-group-inline">
+        <label class="form-label form-label-inline"><input type="checkbox" id="setEmbedMetadata"> 嵌入元数据</label>
+        <label class="form-label form-label-inline"><input type="checkbox" id="setWriteSubs"> 下载字幕</label>
+        <label class="form-label form-label-inline"><input type="checkbox" id="setWriteAutoSubs"> 自动字幕</label>
+        <label class="form-label form-label-inline"><input type="checkbox" id="setWriteThumbnail"> 缩略图</label>
+        <label class="form-label form-label-inline"><input type="checkbox" id="setNoPlaylist"> 单视频</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="hideModal('settingsModal')">取消</button>
+      <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+    </div>
+  </div>
+</div>
+
+<!-- Cookie Modal -->
+<div class="modal-overlay" id="cookieModal" onclick="if(event.target===this)hideModal('cookieModal')">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">🍪 Cookie 管理</span>
+      <button class="btn-icon" onclick="hideModal('cookieModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-hint" style="margin-bottom:12px">
+        某些视频站需要登录才能下 (YouTube 会员 / B站大会员 / 知乎登录可见等)。<br>
+        从浏览器导出 Netscape 格式的 cookies.txt 粘到下面 → 保存后下次下载自动加载。
+      </div>
+      <div class="form-group">
+        <label class="form-label">Netscape 格式 cookies.txt 内容</label>
+        <textarea class="input" id="cookieContent" rows="12" placeholder="# Netscape HTTP Cookie File
+# https://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file! Do not edit.
+
+.youtube.com  TRUE  /  FALSE  1234567890  CONSENT  YES+cb
+.youtube.com  TRUE  /  FALSE  1234567890  LOGIN_INFO  ..."></textarea>
+      </div>
+      <div id="cookieStatus" class="form-hint"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="hideModal('cookieModal')">取消</button>
+      <button class="btn btn-danger" onclick="deleteCookie()">🗑 删除 Cookie</button>
+      <button class="btn btn-primary" onclick="saveCookie()">保存 Cookie</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-overlay" id="deleteModal" onclick="if(event.target===this)hideModal('deleteModal')">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">🗑 确认删除</span>
+      <button class="btn-icon" onclick="hideModal('deleteModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p>确认删除此任务?</p>
+      <div id="deleteTaskInfo" class="info-preview"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="hideModal('deleteModal')">取消</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">仅删除记录</button>
+      <button class="btn btn-danger" onclick="confirmDelete(true)">删除记录+文件</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toastContainer" class="toast-container"></div>
+
+<script src="util/sparkline.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

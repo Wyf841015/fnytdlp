@@ -1,0 +1,17 @@
+# Runtime artifacts
+node_modules/
+data/
+*.log
+*.db
+*.sqlite
+.DS_Store
+*.fpk
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+bin/yt-dlp

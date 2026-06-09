@@ -1,0 +1,12 @@
+appname               = fnytdlp
+version               = 0.1.0
+display_name          = 视频下载器
+desc                  = 集成 yt-dlp 的飞牛 NAS 视频下载工具，支持 1000+ 视频站（YouTube/B站/抖音/西瓜/微博/推特 等），支持自定义格式选择、字幕下载、SponsorBlock 广告跳过、Cookie 认证、自适应 x86_64/aarch64 架构
+platform              = all
+source                = thirdparty
+maintainer            = 一零一二
+maintainer_url        = https://gitee.com/wyf1015
+distributor           = 一零一二
+distributor_url       = https://gitee.com/wyf1015
+desktop_uidir         = ui
+desktop_applaunchname = fnytdlp.Application

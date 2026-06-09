@@ -1,0 +1,68 @@
+#!/bin/bash
+
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+PID_FILE="${TRIM_PKGVAR}/app.pid"
+
+# P0-7 关键: 桥接 fnOS 框架的 TRIM_PKGVAR → Node.js 的 TRM_PKGVAR
+# 不导出会导致 server.js 走 TARGET_DIR/data 兜底, 数据写到 @appcenter
+# → 重装时整个安装目录被清空, 用户配置和任务历史全丢
+export TRM_PKGVAR="${TRIM_PKGVAR}"
+
+export PATH=/var/apps/nodejs_v24/target/bin:$PATH
+CMD="node ${TRIM_APPDEST}/ui/server.js"
+
+log_msg() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> ${LOG_FILE}
+}
+
+start_process() {
+    if status; then
+        return 0
+    fi
+    log_msg "Starting process ..."
+    bash -c "${CMD}" >> ${LOG_FILE} 2>&1 &
+    printf "%s" "$!" > ${PID_FILE}
+    log_msg "pid=$!"
+    return 0
+}
+
+stop_process() {
+    log_msg "Stopping process ..."
+    if [ -f "${PID_FILE}" ]; then
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        if kill -0 "${pid}" 2>/dev/null; then
+            log_msg "send TERM to PID:${pid}"
+            kill -TERM ${pid}
+            local count=0
+            while kill -0 "${pid}" 2>/dev/null && [ $count -lt 10 ]; do
+                sleep 1; count=$((count + 1))
+                log_msg "waiting ... (${count}s)"
+            done
+            if kill -0 "${pid}" 2>/dev/null; then
+                log_msg "send KILL to PID:${pid}"
+                kill -KILL ${pid}
+            fi
+        fi
+        rm -f ${PID_FILE}
+    fi
+    return 0
+}
+
+status() {
+    if [ -f "${PID_FILE}" ]; then
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        if kill -0 "${pid}" 2>/dev/null; then
+            return 0
+        else
+            rm -f ${PID_FILE}
+        fi
+    fi
+    return 1
+}
+
+case $1 in
+start)   start_process ;;
+stop)    stop_process ;;
+status)  if status; then exit 0; else exit 3; fi ;;
+*)       exit 1 ;;
+esac
