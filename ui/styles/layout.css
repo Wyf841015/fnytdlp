@@ -489,10 +489,12 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px 20px;
-  transition: border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast), opacity 0.2s ease;
   cursor: pointer;
   overflow: hidden;
   min-width: 0;
+  content-visibility: auto;
+  contain-intrinsic-size: 80px;
 }
 
 .task-item:hover {

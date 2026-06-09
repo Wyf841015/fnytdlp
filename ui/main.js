@@ -196,7 +196,6 @@ updateClock();
 const loadTasks = async () => {
   try {
     const list = $('taskList');
-    list.innerHTML = '<div class="loading-spinner">加载中...</div>';
     const data = await API.get('/api/tasks');
     tasks = data.tasks || [];
     renderTasks();
@@ -713,7 +712,15 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// ── SSE 实时进度 ─────────────────────────────────────────────────
+let _renderTimer = null;
+const scheduleRender = () => {
+  if (_renderTimer) return;
+  _renderTimer = requestAnimationFrame(() => {
+    _renderTimer = null;
+    renderTasks();
+    updateKpi();
+  });
+};
 // ── SSE 指数退避 ──────────────────────────────────────────────
 let _eventSource = null;  // for beforeunload cleanup
 let _sseReconnecting = false;  // P2: 重连闭锁
@@ -731,14 +738,12 @@ const startSSE = () => {
     const i = tasks.findIndex(x => x.id === t.id);
     if (i >= 0) tasks[i] = { ...tasks[i], ...t };
     else tasks.push(t);
-    updateKpi();
-    renderTasks();
+    scheduleRender();
   });
   _eventSource.addEventListener('task-deleted', (e) => {
     const { id } = JSON.parse(e.data);
     tasks = tasks.filter(x => x.id !== id);
-    renderTasks();
-    updateKpi();
+    scheduleRender();
   });
   _eventSource.onerror = (e) => {
     if (_sseReconnecting) return;  // P2: 闭锁, 防重复
@@ -803,8 +808,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   // load initial
   await loadTasks();
-  // poll every 3s as fallback
-  setInterval(loadTasks, 3000);
+  // poll every 5s as fallback (SSE 主, 轮询备)
+  setInterval(loadTasks, 5000);
   // SSE
   startSSE();
   // health
