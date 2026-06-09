@@ -873,6 +873,11 @@ html[data-theme='light'] .task-item.selected {
   margin-bottom: 24px;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
+}
+.empty-actions .btn {
+  min-width: 120px;
+  justify-content: center;
 }
 .empty-tips {
   display: flex;
