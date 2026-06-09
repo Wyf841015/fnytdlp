@@ -9,9 +9,9 @@ fi
 
 _LIB_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
 # shellcheck source=lib/feishu_push.sh
-# source "${_LIB_DIR}/feishu_push.sh"
+source "${_LIB_DIR}/feishu_push.sh"
 
-# 飞书安装统计推送（已停用）
-# feishu_push_install "fnytdlp" "${TRIM_APPVER}" || true
+# 飞书安装统计推送
+feishu_push_install "fnytdlp" "${TRIM_APPVER}" || true
 
 exit 0

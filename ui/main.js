@@ -160,6 +160,12 @@ try {
   }
 } catch (e) {}
 
+// 版权年份
+document.addEventListener('DOMContentLoaded', () => {
+  const cy = document.getElementById('copyright-year');
+  if (cy) cy.textContent = new Date().getFullYear();
+});
+
 // ── 时钟 ──────────────────────────────────────────────────────────
 const updateClock = () => {
   const d = new Date();
