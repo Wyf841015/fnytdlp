@@ -535,7 +535,7 @@ const startSSE = () => {
 };
 
 // ── init ─────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // init sparklines
   try {
     sparkActive = new Sparkline('sparkActive', { max: 30, color: 'hsl(217, 91%, 60%)' });
@@ -543,31 +543,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     sparkCompleted = new Sparkline('sparkCompleted', { max: 30, color: 'hsl(280, 60%, 65%)' });
     sparkTotal = new Sparkline('sparkTotal', { max: 30, color: 'hsl(40, 96%, 53%)' });
   } catch (e) { console.warn('Sparkline init failed', e); }
-  // P0 修复: fnOS WebView inline onclick 不识别 window.X 函数
-  // → 统一转 addEventListener
-  // 参照 fnclearup-njs 修复模式 (memory: "IIFE 内 function 通过 inline onclick 调用无效")
+  // P0 修复: fnOS WebView inline onclick 失效
+  // 统一转 addEventListener, 用 new Function 原样执行 onclick 代码
+  // (跟浏览器自身对 onclick 的 eval 行为一致, 不依赖 window.X 检查)
   document.querySelectorAll('[onclick]').forEach(el => {
     const attr = el.getAttribute('onclick');
-    // 跳过事件依赖的 (modal overlay onclick="if(event.target===this)...")
-    if (attr.includes('event')) return;
-    const match = attr.match(/^([a-zA-Z_]\w*)\((.*)\)$/);
-    if (!match || typeof window[match[1]] !== 'function') return;
-    const fnName = match[1];
-    const argStr = match[2].trim();
     el.removeAttribute('onclick');
-    if (argStr === '') {
-      // 无参: showAddTaskModal(), toggleTheme(), ...
-      el.addEventListener('click', () => window[fnName]());
-    } else {
-      // 带参数: hideModal('addTaskModal'), ...
-      try {
-        const args = JSON.parse('[' + argStr + ']');
-        el.addEventListener('click', () => window[fnName](...args));
-      } catch {
-        // JSON parse 失败, 用 Function 兜底
-        el.addEventListener('click', new Function('window.' + attr));
-      }
-    }
+    el.addEventListener('click', function(e) {
+      new Function('event', attr).call(this, e);
+    });
   });
   // load initial
   await loadTasks();
