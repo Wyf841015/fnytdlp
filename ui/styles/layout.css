@@ -156,14 +156,25 @@
 }
 
 /* ===== KPI Dashboard ===== */
+/* P0 移动端崩坏修复: 默认 2 列布局 (覆盖 fnOS 移动 WebView 980 viewport 不触发
+   768 媒体查询的问题)。4 列只在超大桌面屏 (>=1280px) 才用 */
 .kpi-dashboard {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  padding: 16px 24px 0;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding: 12px 16px 0;
   max-width: 960px;
   width: 100%;
   margin: 0 auto;
+}
+
+/* 桌面 4 列布局 (>=1280px 真桌面) */
+@media (min-width: 1280px) {
+  .kpi-dashboard {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 16px 24px 0;
+  }
 }
 
 .kpi-card {
