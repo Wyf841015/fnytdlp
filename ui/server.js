@@ -29,6 +29,8 @@ import crypto from 'node:crypto';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+// ── version (保持与 manifest 一致 ────────────────────────────────────────
+const VERSION = '0.1.0';
 // ── paths ──────────────────────────────────────────────────────────────
 const PKGVAR    = process.env.TRM_PKGVAR || process.env.TRIM_PKGVAR || null;
 const APPDEST   = process.env.TRIM_APPDEST || null;
@@ -879,13 +881,7 @@ const handle = async (req, res) => {
     }
     // ── system ──
     else if (pathname === '/api/health') {
-      let appVersion = '0.0.0';
-      try {
-        const m = fs.readFileSync(path.join(__dirname, '../manifest'), 'utf8');
-        const ver = m.match(/^version\s*=\s*(\S+)/m);
-        appVersion = ver ? ver[1] : '0.0.0';
-      } catch(e) {}
-      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: fs.existsSync(YT_DLP_BIN), ffmpegExists: fs.existsSync(FFMPEG_BIN), version: appVersion });
+      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: fs.existsSync(YT_DLP_BIN), ffmpegExists: fs.existsSync(FFMPEG_BIN), version: VERSION });
     } else if (pathname === '/api/events') {
       handleSSE(req, res);
     }
