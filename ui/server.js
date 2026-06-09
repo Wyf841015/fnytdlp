@@ -590,6 +590,7 @@ const handle = async (req, res) => {
       const body = await parseBody(req);
       const url = body.url?.trim();
       if (!url) return sendJSON(res, 400, { error: 'url is required' });
+      if (!isValidUrl(url)) return sendJSON(res, 400, { error: `Invalid URL (only http/https allowed): ${url}` });
       const task = createTask(url, body.options || {});
       startTask(task.id);
       sendJSON(res, 200, { task });
