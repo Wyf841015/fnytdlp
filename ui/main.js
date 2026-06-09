@@ -215,13 +215,15 @@ updateClock();
 // ── 任务加载 + 渲染 ──────────────────────────────────────────────
 const loadTasks = async () => {
   try {
-    const list = $('taskList');
     const data = await API.get('/api/tasks');
     tasks = data.tasks || [];
     renderTasks();
     updateKpi();
   } catch (e) {
     console.error('loadTasks failed', e);
+    // 后端故障 / 离线时给用户明确反馈 (P2 修复)
+    const offline = !navigator.onLine;
+    toast(offline ? '网络断开, 请检查连接' : `加载任务失败: ${e.message}`, 'error');
   }
 };
 
@@ -447,31 +449,50 @@ const confirmDelete = async (withFile) => {
 };
 window.confirmDelete = confirmDelete;
 
-const clearCompleted = async () => {
-  const completed = tasks.filter(t => t.status === 'completed' || t.status === 'error');
-  let ok = 0;
-  for (const t of completed) {
-    try {
-      await API.del(`/api/tasks/${t.id}`);
-      ok++;
-    } catch (e) { console.warn('clearCompleted task', t.id, 'failed', e); }
+// 通用函数式 loading 守卫: 期间禁用按钮, 避免用户重复点击导致 N 次请求
+const withButtonLoading = async (btn, fn) => {
+  if (!btn) return fn();
+  if (btn.disabled) return;  // 已在 loading, 静默忽略
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.classList.add('btn-loading');
+  btn.textContent = '处理中...';
+  try { return await fn(); } finally {
+    btn.disabled = false;
+    btn.classList.remove('btn-loading');
+    btn.textContent = orig;
   }
-  toast(`已清理 ${completed.length} 个任务${ok < completed.length ? ` (${ok} 成功)` : ''}`, ok === completed.length ? 'success' : 'warn');
-  await loadTasks();
+};
+
+const clearCompleted = async () => {
+  return withButtonLoading(document.querySelector('button[onclick*="clearCompleted"]'), async () => {
+    const completed = tasks.filter(t => t.status === 'completed' || t.status === 'error');
+    let ok = 0;
+    for (const t of completed) {
+      try {
+        await API.del(`/api/tasks/${t.id}`);
+        ok++;
+      } catch (e) { console.warn('clearCompleted task', t.id, 'failed', e); }
+    }
+    toast(`已清理 ${completed.length} 个任务${ok < completed.length ? ` (${ok} 成功)` : ''}`, ok === completed.length ? 'success' : 'warn');
+    await loadTasks();
+  });
 };
 window.clearCompleted = clearCompleted;
 
 const stopAll = async () => {
-  const downloading = tasks.filter(t => t.status === 'downloading' || t.status === 'pending');
-  let ok = 0;
-  for (const t of downloading) {
-    try {
-      await API.post(`/api/tasks/${t.id}/stop`, {});
-      ok++;
-    } catch (e) { console.warn('stopAll task', t.id, 'failed', e); }
-  }
-  toast(`已停止 ${downloading.length} 个任务${ok < downloading.length ? ` (${ok} 成功)` : ''}`, ok === downloading.length ? 'success' : 'warn');
-  await loadTasks();
+  return withButtonLoading(document.querySelector('button[onclick*="stopAll"]'), async () => {
+    const downloading = tasks.filter(t => t.status === 'downloading' || t.status === 'pending');
+    let ok = 0;
+    for (const t of downloading) {
+      try {
+        await API.post(`/api/tasks/${t.id}/stop`, {});
+        ok++;
+      } catch (e) { console.warn('stopAll task', t.id, 'failed', e); }
+    }
+    toast(`已停止 ${downloading.length} 个任务${ok < downloading.length ? ` (${ok} 成功)` : ''}`, ok === downloading.length ? 'success' : 'warn');
+    await loadTasks();
+  });
 };
 window.stopAll = stopAll;
 
