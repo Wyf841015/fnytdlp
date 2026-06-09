@@ -205,10 +205,10 @@
 }
 .kpi-card:hover::before { opacity: 1; }
 
-.kpi-card[data-kpi="active"] { --kpi-accent: hsl(217, 91%, 60%); }
-.kpi-card[data-kpi="speed"]  { --kpi-accent: hsl(152, 58%, 53%); }
-.kpi-card[data-kpi="completed"] { --kpi-accent: hsl(280, 60%, 65%); }
-.kpi-card[data-kpi="total"]  { --kpi-accent: hsl(40, 96%, 53%); }
+.kpi-card[data-kpi="active"]    { --kpi-accent-h: 217; --kpi-accent-s: 91%; --kpi-accent-l: 60%; }
+.kpi-card[data-kpi="speed"]     { --kpi-accent-h: 152; --kpi-accent-s: 58%; --kpi-accent-l: 53%; }
+.kpi-card[data-kpi="completed"] { --kpi-accent-h: 280; --kpi-accent-s: 60%; --kpi-accent-l: 65%; }
+.kpi-card[data-kpi="total"]     { --kpi-accent-h: 40;  --kpi-accent-s: 96%; --kpi-accent-l: 53%; }
 
 .kpi-icon {
   width: 36px;
@@ -216,12 +216,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: hsl(var(--kpi-accent) / 0.12);
-  color: var(--kpi-accent);
+  background: hsl(var(--kpi-accent-h), var(--kpi-accent-s), var(--kpi-accent-l) / 0.12);
+  color: hsl(var(--kpi-accent-h), var(--kpi-accent-s), var(--kpi-accent-l));
   border-radius: var(--radius-sm);
   font-size: 1.05rem;
   flex-shrink: 0;
-  box-shadow: inset 0 0 0 1px hsl(var(--kpi-accent) / 0.2);
+  box-shadow: inset 0 0 0 1px hsl(var(--kpi-accent-h), var(--kpi-accent-s), var(--kpi-accent-l) / 0.2);
 }
 
 .kpi-content {

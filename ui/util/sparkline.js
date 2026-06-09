@@ -32,11 +32,15 @@ class Sparkline {
 
   _getColor() {
     if (this.color) return this.color;
-    // Read CSS var --kpi-accent from parent .kpi-card
+    // Read CSS vars --kpi-accent-h/s/l from parent .kpi-card and compose hsl()
     const card = this.canvas.closest('.kpi-card');
     if (!card) return '#3eb95f';
-    const accent = getComputedStyle(card).getPropertyValue('--kpi-accent').trim();
-    return accent || '#3eb95f';
+    const style = getComputedStyle(card);
+    const h = style.getPropertyValue('--kpi-accent-h').trim();
+    const s = style.getPropertyValue('--kpi-accent-s').trim();
+    const l = style.getPropertyValue('--kpi-accent-l').trim();
+    if (h && s && l) return `hsl(${h}, ${s}, ${l})`;
+    return '#3eb95f';
   }
 
   push(value) {
