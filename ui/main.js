@@ -380,7 +380,7 @@ window.clearCompleted = clearCompleted;
 const stopAll = async () => {
   const downloading = tasks.filter(t => t.status === 'downloading' || t.status === 'pending');
   for (const t of downloading) {
-    await API.post(`/api/tasks/${t.stop}`, {});
+    await API.post(`/api/tasks/${t.id}/stop`, {});
   }
   toast(`已停止 ${downloading.length} 个任务`, 'success');
   await loadTasks();
@@ -518,7 +518,11 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 // ── SSE 实时进度 ─────────────────────────────────────────────────
+// ── SSE 指数退避 ──────────────────────────────────────────────
+let sseRetryCount = 0;
+const SSE_RETRY_MAX = 60000;  // 最大 60s
 const startSSE = () => {
+  sseRetryCount = 0;  // P2-1: 成功连接后重置退避计数
   const es = new EventSource(GATEWAY_BASE + '/api/events');
   es.addEventListener('task-created', () => loadTasks());
   es.addEventListener('task-updated', () => loadTasks());
@@ -536,10 +540,13 @@ const startSSE = () => {
     renderTasks();
     updateKpi();
   });
+  // P2-1: SSE 指数退避（初始 5s, 逐次翻倍, 最大 60s）
   es.onerror = (e) => {
-    console.warn('SSE error, will retry in 5s', e);
+    sseRetryCount++;
+    const delay = Math.min(5000 * Math.pow(2, sseRetryCount - 1), SSE_RETRY_MAX);
+    console.warn(`SSE error (attempt ${sseRetryCount}), retrying in ${delay/1000}s`, e);
     es.close();
-    setTimeout(startSSE, 5000);
+    setTimeout(startSSE, delay);
   };
 };
 
@@ -554,9 +561,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     sparkTotal = new Sparkline('sparkTotal', { max: 30, color: 'hsl(40, 96%, 53%)' });
   } catch (e) { console.warn('Sparkline init failed', e); }
   // P0 修复: fnOS WebView inline onclick 失效
-  // 方案: 直接 window[fnName](...args) 不依赖 eval/new Function
-  // 只有 event.target===this 的 modal overlay 才用 new Function 带 try-catch
-  document.querySelectorAll('[onclick]').forEach(el => {
+  // 排除 #settingsBtn（已在 addEventListener 单独绑定）
+  document.querySelectorAll('[onclick]:not(#settingsBtn)').forEach(el => {
     const attr = el.getAttribute('onclick');
     el.removeAttribute('onclick');
     el.addEventListener('click', function(e) {

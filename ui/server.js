@@ -25,6 +25,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -92,6 +93,21 @@ LOG('PKGVAR=' + PKGVAR);
 LOG('TARGET_DIR=' + TARGET_DIR);
 LOG('YT_DLP_BIN=' + YT_DLP_BIN);
 LOG('FFMPEG_BIN=' + FFMPEG_BIN);
+
+// P2-3: 启动时检测 yt-dlp 版本
+if (fs.existsSync(YT_DLP_BIN)) {
+  try {
+    const { spawnSync } = await import('node:child_process');
+    const result = spawnSync(YT_DLP_BIN, ['--version'], { timeout: 5000, encoding: 'utf8' });
+    if (result.status === 0) {
+      LOG('yt-dlp version: ' + result.stdout.trim());
+    } else {
+      LOG('yt-dlp version check failed: exit ' + result.status);
+    }
+  } catch (e) {
+    LOG('yt-dlp version check error: ' + e.message);
+  }
+}
 
 // ── helpers ────────────────────────────────────────────────────────────
 const sendJSON = (res, status, data) => {
@@ -221,7 +237,7 @@ const createTask = (url, options = {}) => {
     throw new Error(`Invalid URL (only http/https allowed): ${url}`);
   }
   _taskIdCounter++;
-  const id = `t_${Date.now()}_${_taskIdCounter}`;
+  const id = `t_${crypto.randomUUID().slice(0, 8)}`;
   const task = {
     id,
     url,
@@ -336,8 +352,8 @@ const buildYtDlpArgs = (task) => {
   // 缩略图
   if (config.writeThumbnail) args.push('--write-thumbnail');
   // SponsorBlock
+  // P1-3: 有具体分类时不加冗余的 --sponsorblock-mark all（all 会标记所有类型）
   if (Array.isArray(config.sponsorblockMark) && config.sponsorblockMark.length > 0) {
-    args.push('--sponsorblock-mark', 'all');
     for (const cat of config.sponsorblockMark) {
       args.push('--sponsorblock-mark', cat);
     }
@@ -548,11 +564,23 @@ const handle = async (req, res) => {
     res.end();
     return;
   }
+  // P1-5: 基础网关认证 — 只对 /api/ 路径检查 X-Trim-Userid
+  // fnOS 网关会透传此 header，本地调试时不强制
   let pathname = req.path;
   if (pathname.startsWith(BASE_PATH + '/')) {
     pathname = '/' + pathname.slice(BASE_PATH.length + 1);
   } else if (pathname === BASE_PATH) {
     pathname = '/';
+  }
+  // P1-5: /api/ 路径要求 X-Trim-Userid header（fnOS 网关透传）
+  // 本地调试没有此 header 时放行（方便 curl 测试）
+  // /api/health 和 /api/events(SSE) 放行
+  if (pathname.startsWith('/api/') && pathname !== '/api/health' && pathname !== '/api/events') {
+    const trimUid = req.headers['x-trim-userid'];
+    if (!trimUid || trimUid === 'undefined') {
+      sendJSON(res, 401, { error: 'Unauthorized: missing X-Trim-Userid header' });
+      return;
+    }
   }
   try {
     // ── 任务 API ──
@@ -617,9 +645,16 @@ const handle = async (req, res) => {
     } else if (pathname === '/api/config' && req.method === 'POST') {
       const body = await parseBody(req);
       const newCfg = { ...config, ...body };
-      // 路径安全检查
-      if (newCfg.downloadPath && !isSafeDownloadPath(newCfg.downloadPath)) {
-        return sendJSON(res, 400, { error: 'downloadPath must be inside ' + config.downloadPath });
+      // P1-4: 允许用户自由更改下载路径（不限制在旧路径下）
+      if (newCfg.downloadPath) {
+        const resolved = path.resolve(newCfg.downloadPath);
+        if (!resolved || resolved === '/') {
+          return sendJSON(res, 400, { error: 'Invalid downloadPath' });
+        }
+      }
+      // 其他路径字段仍使用 isSafeDownloadPath 校验
+      if (newCfg.otherPath && !isSafeDownloadPath(newCfg.otherPath)) {
+        return sendJSON(res, 400, { error: 'otherPath must be inside ' + config.downloadPath });
       }
       config = newCfg;
       saveConfig();
@@ -629,8 +664,11 @@ const handle = async (req, res) => {
     else if (pathname === '/api/cookies' && req.method === 'POST') {
       const body = await parseBody(req);
       const content = body.content || '';
-      if (!content.includes('# Netscape HTTP Cookie File')) {
-        return sendJSON(res, 400, { error: 'Invalid cookie file (must start with Netscape header)' });
+      // P1-2: 增强 Cookie 格式校验 — 检查至少有一条 tab 分隔的 Netscape 格式行
+      const lines = content.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
+      const validLines = lines.filter(l => l.includes('\t'));
+      if (!content.includes('# Netscape HTTP Cookie File') || validLines.length === 0) {
+        return sendJSON(res, 400, { error: 'Invalid cookie file (must start with Netscape header and contain at least one tab-separated cookie line)' });
       }
       fs.writeFileSync(COOKIES_FILE, content, { mode: 0o600 });
       config.cookiesEnabled = true;
