@@ -47,8 +47,29 @@ const SOCK_PATH = path.join(TARGET_DIR, SOCK_NAME);
 const PORT      = parseInt(process.env.PORT || '0') || 9634;
 const BASE_PATH = '/app/fnytdlp';
 
-// yt-dlp binary 路径
-const YT_DLP_BIN = process.env.YT_DLP_BIN || path.join(TARGET_DIR, 'cmd', 'bin', 'yt-dlp');
+// ── yt-dlp binary 路径 (自适应 x86_64 / aarch64) ─────────────────
+// 启动时根据 process.arch 选对应 binary:
+//   - x64   → cmd/bin/yt-dlp-x86_64
+//   - arm64 → cmd/bin/yt-dlp-aarch64
+//   - 其他  → 兜底 cmd/bin/yt-dlp
+// 注: zipimport 模式 binary 内容是平台无关 Python 脚本, 同份文件可在 x86_64 / aarch64 都跑
+// 但保留两个不同文件名方便用户/系统明确知道运行在哪个架构, 未来可替换为 musl native binary
+const BIN_DIR = path.join(TARGET_DIR, 'cmd', 'bin');
+const pickYtDlpBin = () => {
+  if (process.env.YT_DLP_BIN) return process.env.YT_DLP_BIN;  // 用户环境变量优先
+  const arch = process.arch;  // 'x64' / 'arm64' / 'ia32' / ...
+  if (arch === 'arm64') {
+    const a = path.join(BIN_DIR, 'yt-dlp-aarch64');
+    if (fs.existsSync(a)) return a;
+  }
+  if (arch === 'x64' || arch === 'ia32') {
+    const x = path.join(BIN_DIR, 'yt-dlp-x86_64');
+    if (fs.existsSync(x)) return x;
+  }
+  // 兜底: 通用名 (兼容老版本)
+  return path.join(BIN_DIR, 'yt-dlp');
+};
+const YT_DLP_BIN = pickYtDlpBin();
 // ffmpeg 路径 (fnOS 系统自带 /usr/bin/ffmpeg, 也允许环境变量覆盖)
 const FFMPEG_BIN = process.env.FFMPEG_BIN || '/usr/bin/ffmpeg';
 
@@ -635,7 +656,7 @@ const handle = async (req, res) => {
     }
     // ── system ──
     else if (pathname === '/api/health') {
-      sendJSON(res, 200, { ok: true, arch: ARCH, ytDlpExists: fs.existsSync(YT_DLP_BIN), ffmpegExists: fs.existsSync(FFMPEG_BIN) });
+      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: fs.existsSync(YT_DLP_BIN), ffmpegExists: fs.existsSync(FFMPEG_BIN) });
     } else if (pathname === '/api/events') {
       handleSSE(req, res);
     }

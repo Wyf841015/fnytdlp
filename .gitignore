@@ -15,3 +15,9 @@ data/
 # OS
 Thumbs.db
 bin/yt-dlp
+bin/yt-dlp-aarch64
+bin/yt-dlp-x86_64
+# 保留以下两条 (yt-dlp binary 需要跟代码一起 commit, 供 fpk 打包)
+# cmd/bin/yt-dlp
+# cmd/bin/yt-dlp-aarch64
+# cmd/bin/yt-dlp-x86_64

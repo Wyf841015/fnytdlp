@@ -6,7 +6,9 @@
 
 - **1000+ 视频站**：YouTube / B 站 / 抖音 / 微博 / X / 西瓜 / 推特 / Twitch / Vimeo / 任意 yt-dlp 支持的站
 - **yt-dlp 完整参数**：格式选择、字幕下载、缩略图、SponsorBlock 广告跳过、元数据嵌入、Cookie 认证、代理
-- **自适应架构**：x86_64 binary 内置（fnOS 服务器主流），aarch64 待补
+- **自适应架构**：x86_64 + aarch64 双 binary 打包，启动时按 `process.arch` 自动选
+  - 当前 zipimport 模式 binary 是平台无关 Python 脚本（同一份内容两架构都能跑），但保留双文件方便未来替换为 musl native binary
+  - 兜底逻辑：env `YT_DLP_BIN` > 架构匹配 > 通用 `yt-dlp`
 - **统一网关模式**：Unix socket + HTTP 双端口，fnOS 网关原生代理
 - **现代 UI**：8 项 UI 重构（KPI Dashboard / Toolbar / Task Card / Settings sidebar / Cookie modal / 5 主题）
 - **实时进度**：SSE 推送 + 2s 轮询双备份
@@ -62,7 +64,8 @@ fnytdlp/
 │   ├── styles/                  # HSL 设计系统 (tokens/components/layout)
 │   └── util/sparkline.js        # KPI 趋势小图
 ├── cmd/
-│   ├── bin/yt-dlp               # 内置 yt-dlp 3.1MB binary
+│   ├── bin/yt-dlp-x86_64        # x86_64 平台 (fnOS 服务器主流)
+│   ├── bin/yt-dlp-aarch64       # aarch64 平台 (ARM NAS)
 │   └── main                     # fnpack 启动脚本
 ├── config/
 │   ├── privilege                # run-as 用户配置
