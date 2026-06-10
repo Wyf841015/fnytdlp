@@ -403,10 +403,17 @@ const deleteTask = (id, opts = {}) => {
     try { _procs.get(id).kill('SIGTERM'); } catch (e) {}
     _procs.delete(id);
   }
-  // 删文件?
-  if (opts.deleteFile && task.filename) {
-    const fp = path.join(config.downloadPath, task.filename);
-    try { if (fs.existsSync(fp)) fs.unlinkSync(fp); } catch (e) {}
+  // 删除下载文件夹
+  if (opts.deleteFile) {
+    const folder = task.options?._downloadFolder;
+    if (folder && fs.existsSync(folder)) {
+      try {
+        fs.rmSync(folder, { recursive: true, force: true });
+        LOG('[deleteTask] deleted folder:', folder);
+      } catch (e) {
+        LOG('[deleteTask] failed to delete folder:', e.message);
+      }
+    }
   }
   tasks.delete(id);
   saveTasks();

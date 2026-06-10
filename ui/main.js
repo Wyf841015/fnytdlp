@@ -511,7 +511,7 @@ const deleteTask = (id) => {
     $('deleteTaskInfo').innerHTML = `
       <div>URL: ${esc(t.url)}</div>
       <div>状态: ${esc(t.status)}</div>
-      ${t.filename ? `<div>文件: ${esc(t.filename)}</div>` : ''}
+      ${t.downloadFolder ? `<div>文件夹: ${esc(t.downloadFolder)}</div>` : ''}
     `;
   }
   showModal('deleteModal');
@@ -525,7 +525,7 @@ const confirmDelete = async (withFile) => {
   await API.del(url);
   deleteTargetId = null;
   hideModal('deleteModal');
-  toast(withFile ? '已删除任务和文件' : '已删除任务记录', 'success');
+  toast(withFile ? '已删除任务和文件夹' : '已删除任务记录', 'success');
   await loadTasks();
 };
 window.confirmDelete = confirmDelete;
