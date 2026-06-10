@@ -620,7 +620,14 @@ const startTask = (id) => {
       // 解析 [download] Destination: ... → 获取文件名 (排除封面图)
       if (line.startsWith('[download] Destination:')) {
         const fp = line.substring('[download] Destination: '.length).trim();
-        if (fp && !/\.(webp|jpe?g|png|gif|info\.json)$/i.test(fp)) task.filename = path.basename(fp);
+        // 只记录视频/音频主文件, 排除中间分片 .m4s/.tmp/.part
+        if (fp && !/\.(webp|jpe?g|png|gif|info\.json)$/i.test(fp)) {
+          const base = path.basename(fp);
+          // yt-dlp 在 ffmpeg 合并后会输出最终文件名, 保留它
+          if (/\.(mp4|mkv|webm|m4a|mp3|opus|flac|wav|ts)$/i.test(base)) {
+            task.filename = base;
+          }
+        }
       }
       // 解析 [info] ... format(s): XXp → 获取格式
       if (line.includes('Downloading') && line.includes('format(s):')) {
@@ -643,23 +650,30 @@ const startTask = (id) => {
       task.eta = 0;
       task.completedAt = Date.now();
       // 兜底: 用 fs.statSync 读真实文件大小 (progress 模板里 total_bytes_estimate 可能为 0)
-      if (!task.filename) {
-        // 兜底 1: 下载目录里找最新文件 (优先用 _downloadFolder, 其次 config.downloadPath)
-        try {
-          const downloadDir = task.options?._downloadFolder || config.downloadPath;
-          const files = fs.readdirSync(downloadDir)
-            .map(f => {
-              try {
-                const fp = path.join(downloadDir, f);
-                const st = fs.statSync(fp);
-                return { name: f, mtime: st.mtimeMs || 0, size: st.size };
-              } catch (e) { return null; }
-            })
-            .filter(x => x && x.size > 0 && !x.name.endsWith('.part') && !x.name.endsWith('.ytdl') && !x.name.startsWith('.'))
-            .sort((a, b) => b.mtime - a.mtime);
-          if (files.length > 0) task.filename = files[0].name;
-        } catch (e) {}
-      }
+      // 优先选最终合并产物 (mp4/mkv/webm/m4a 等), 排除中间分片 (.m4s/.tmp/.part)
+      try {
+        const downloadDir = task.options?._downloadFolder || config.downloadPath;
+        const files = fs.readdirSync(downloadDir)
+          .map(f => {
+            try {
+              const fp = path.join(downloadDir, f);
+              const st = fs.statSync(fp);
+              return { name: f, mtime: st.mtimeMs || 0, size: st.size };
+            } catch (e) { return null; }
+          })
+          .filter(x => x && x.size > 0 && !x.name.endsWith('.part') && !x.name.endsWith('.ytdl') && !x.name.startsWith('.'));
+        // 优先选最大文件 (通常是合并后的 mp4/mkv)
+        const merged = files
+          .filter(f => /\.(mp4|mkv|webm|m4a|mp3|opus|flac|wav|ts)$/i.test(f.name))
+          .sort((a, b) => b.size - a.size);
+        if (merged.length > 0) {
+          task.filename = merged[0].name;
+        } else if (files.length > 0) {
+          // 没找到合并产物, 选最新文件
+          files.sort((a, b) => b.mtime - a.mtime);
+          task.filename = files[0].name;
+        }
+      } catch (e) {}
       if (task.filename) {
         const fileDir = task.options?._downloadFolder || config.downloadPath;
         const fp = path.join(fileDir, task.filename);
