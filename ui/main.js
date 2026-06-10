@@ -395,6 +395,24 @@ const updateStatusBar = () => {
   }
 };
 
+// ── Cookie 自动匹配 ─────────────────────────────────────────
+const autoDetectCookie = (url, cookies) => {
+  if (!url || !cookies || cookies.length === 0) return '';
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    let best = '', bestLen = 0;
+    for (const c of cookies) {
+      const domain = (c.domain || '').toLowerCase().replace(/^\./, '');
+      if (!domain) continue;
+      // hostname === domain 完全匹配, 或 hostname 以 .domain 结尾 (子域名)
+      if (hostname === domain || hostname.endsWith('.' + domain)) {
+        if (domain.length > bestLen) { best = c.name; bestLen = domain.length; }
+      }
+    }
+    return best;
+  } catch { return ''; }
+};
+
 // ── 任务操作 ──────────────────────────────────────────────────────
 const loadCookieSelect = async () => {
   const sel = $('addCookieName');
@@ -404,6 +422,16 @@ const loadCookieSelect = async () => {
     const cookies = (r && r.cookies) || [];
     sel.innerHTML = '<option value="">无 (不使用 Cookie)</option>' +
       cookies.map(c => `<option value="${esc(c.name)}">${esc(c.name)}${c.domain ? ' · ' + esc(c.domain) : ''}</option>`).join('');
+    // 自动匹配: 如果已有 URL, 根据域名选择对应 Cookie
+    const raw = $('addUrls').value.trim();
+    if (raw) {
+      const urlRegex = /https?:\/\/[^\s<>"']+/g;
+      const urls = raw.match(urlRegex);
+      if (urls && urls.length > 0) {
+        const matched = autoDetectCookie(urls[0], cookies);
+        if (matched) sel.value = matched;
+      }
+    }
   } catch (e) {
     sel.innerHTML = '<option value="">无 (不使用 Cookie)</option>';
   }
@@ -434,6 +462,14 @@ const parseUrls = async () => {
   const urls = raw.match(urlRegex);
   if (!urls || urls.length === 0) { toast('未找到有效 URL', 'warn'); return; }
   const url = urls[0];
+  // 自动匹配 Cookie (如果尚未手动选择)
+  const sel = $('addCookieName');
+  if (sel && sel.value === '') {
+    API.get('/api/cookies').then(r => {
+      const matched = autoDetectCookie(url, (r && r.cookies) || []);
+      if (matched) sel.value = matched;
+    }).catch(() => {});
+  }
   $('addPreview').textContent = '⏳ 解析中...';
   const cookieName = $('addCookieName')?.value?.trim() || '';
   try {
@@ -476,7 +512,17 @@ const submitAddTask = async () => {
   options.writeThumbnail = $('addWriteThumbnail').checked;
   options.noPlaylist = $('addNoPlaylist').checked;
   const cookieName = $('addCookieName').value.trim();
-  if (cookieName) options.cookieName = cookieName;
+  if (cookieName) {
+    options.cookieName = cookieName;
+  } else if (urls.length > 0) {
+    // 自动匹配: 用户未手动选 Cookie, 从 URL 自动检测
+    try {
+      const r = await API.get('/api/cookies');
+      const cookies = (r && r.cookies) || [];
+      const detected = autoDetectCookie(urls[0], cookies);
+      if (detected) options.cookieName = detected;
+    } catch (e) { /* 静默 */ }
+  }
 
   let ok = 0, fail = 0;
   for (const url of unique) {
@@ -1169,6 +1215,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const urls = raw.match(urlRegex);
         if (urls && urls.length > 0) {
           _addUrls.value = urls.join('\n');
+          // 自动匹配 Cookie
+          const sel = $('addCookieName');
+          if (sel && sel.value === '') {
+            API.get('/api/cookies').then(r => {
+              const matched = autoDetectCookie(urls[0], (r && r.cookies) || []);
+              if (matched) sel.value = matched;
+            }).catch(() => {});
+          }
           // 自动触发解析 (只对单 URL)
           if (urls.length === 1 && typeof parseUrls === 'function') {
             parseUrls();
