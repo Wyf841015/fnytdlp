@@ -284,11 +284,30 @@ const renderTask = (t) => {
     stopped: '<span class="badge badge-warning">⏹ 停止</span>',
   }[t.status] || `<span class="badge">${esc(t.status)}</span>`;
 
+  // 多流下载进度: 视频 50% + 音频 50%, 合并 99% → 完成 100%
+  // task.progress 已经是 server 聚合后的值, 直接显示
   const progressPct = (t.progress || 0).toFixed(1);
   const downloaded = formatBytes(t.downloadedBytes);
   const total = t.totalBytes ? formatBytes(t.totalBytes) : '?';
   const speed = formatSpeed(t.speed);
   const eta = t.eta ? formatDuration(t.eta) : '-';
+
+  // 子进度: _streamPhases.video/audio 百分比, 给用户看"现在在下载哪个流"
+  const sp = t._streamPhases || {};
+  const vPct = sp.video ? (sp.video.done ? 100 : (sp.video.pct || 0)) : null;
+  const aPct = sp.audio ? (sp.audio.done ? 100 : (sp.audio.pct || 0)) : null;
+  const isMultiStream = vPct !== null && aPct !== null && (sp.video?.total > 0) && (sp.audio?.total > 0);
+  const phaseLabel = t._phase === 'merging' ? '🔄 合并中...'
+    : t._phase === 'done' ? '✅ 完成'
+    : (isMultiStream
+      ? (vPct < 100 ? `🎬 视频 ${vPct.toFixed(0)}%` : (aPct < 100 ? `🎵 音频 ${aPct.toFixed(0)}%` : '⏳ 准备合并'))
+      : null);
+  // 子进度条 HTML
+  const subProgressHtml = isMultiStream ? `
+    <div class="task-sub-progress">
+      <div class="sub-row"><span class="sub-label">🎬 视频</span><div class="sub-track"><div class="sub-fill tone-primary" style="width:${vPct}%"></div></div><span class="sub-pct">${vPct.toFixed(0)}%</span></div>
+      <div class="sub-row"><span class="sub-label">🎵 音频</span><div class="sub-track"><div class="sub-fill tone-success" style="width:${aPct}%"></div></div><span class="sub-pct">${aPct.toFixed(0)}%</span></div>
+    </div>` : '';
 
   const title = t.filename || t.url;
   const showActions = t.status === 'error' || t.status === 'stopped' || t.status === 'paused';
@@ -327,7 +346,9 @@ const renderTask = (t) => {
           <div class="progress-track"><div class="progress-fill ${t.status === 'processing' ? 'tone-warning' : 'tone-success'}" style="width:${progressPct}%"></div></div>
           <div class="task-percent">${progressPct}%</div>
         </div>
+        ${subProgressHtml}
         <div class="task-meta">
+          ${phaseLabel ? `<span class="task-phase">${phaseLabel}</span>` : ''}
           <span class="task-speed">⚡ ${speed}</span>
           <span class="task-eta">⏱ 剩余 ${eta}</span>
           <span>${downloaded} / ${total}</span>

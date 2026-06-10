@@ -1048,6 +1048,62 @@ html[data-theme='light'] .task-item.selected {
 .task-percent.tone-warning { color: hsl(40, 96%, 53%); }
 .task-percent.tone-live    { color: hsl(340, 82%, 60%); }
 
+/* M-10: 多流下载子进度 (视频流/音频流独立进度条) */
+.task-sub-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 4px;
+  padding: 6px 8px;
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+}
+.task-sub-progress .sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.task-sub-progress .sub-label {
+  flex: 0 0 48px;
+  font-weight: 600;
+}
+.task-sub-progress .sub-track {
+  flex: 1;
+  height: 4px;
+  background: var(--bg);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+.task-sub-progress .sub-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.task-sub-progress .sub-fill.tone-primary { background: linear-gradient(90deg, hsl(217, 91%, 60%), hsl(217, 91%, 70%)); }
+.task-sub-progress .sub-fill.tone-success { background: linear-gradient(90deg, hsl(142, 71%, 45%), hsl(142, 71%, 55%)); }
+.task-sub-progress .sub-pct {
+  flex: 0 0 36px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.task-phase {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 
 .task-size {
   font-size: 0.78rem;

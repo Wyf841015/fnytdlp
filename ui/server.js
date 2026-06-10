@@ -28,6 +28,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { applyLine as _applyProgressLine, newTask as _newProgressTask } from './util/progress-aggregator.js';
 
 // ── version (保持与 manifest 一致 ────────────────────────────────────────
 const VERSION = '0.2.0';
@@ -592,6 +593,9 @@ const startTask = (id) => {
   task.totalBytes = 0;
   task.speed = 0;
   task.eta = 0;
+  // 多流下载阶段追踪: 用 progress-aggregator util 的 newTask 初始化
+  // 字段: _streamPhases (video/audio) + _currentStream + _phase + _pendingFilenames + _streamTypeCount
+  Object.assign(task, _newProgressTask());
   task.updatedAt = Date.now();
   saveTasks();
   broadcast('task-updated', task);
@@ -606,40 +610,26 @@ const startTask = (id) => {
     stdoutBuf += chunk.toString('utf8');
     const lines = stdoutBuf.split('\n');
     stdoutBuf = lines.pop() || ''; // 最后一段 (可能不完整) 留到下次
+    let hasProgressUpdate = false;
     for (const line of lines) {
-      // 解析 PROGRESS 行: PROGRESS|XX.X%|speed_str|eta_str|downloaded_bytes|total_bytes|total_bytes_estimate|DONE
-      if (line.startsWith('PROGRESS|')) {
-        const parts = line.split('|');
-        if (parts.length >= 8) {
-          task.progress = parseFloat(parts[1].replace('%','')) || 0;
-          task.speed = parseSpeed(parts[2]);
-          task.eta = parseDuration(parts[3]);
-          task.downloadedBytes = parseInt(parts[4], 10) || 0;
-          // total_bytes 为 0 时用 total_bytes_estimate (VOD 无 Content-Length 时)
-          const tbExact = parseInt(parts[5], 10) || 0;
-          const tbEst = parseInt(parts[6], 10) || 0;
-          task.totalBytes = tbExact || tbEst;
-          task.updatedAt = Date.now();
+      // 全部解析逻辑 (PROGRESS / Destination / Merger / format) 都委托给 util
+      // util 会原地更新 task._currentStream / _streamPhases / _phase / progress / filename
+      const beforeProgress = task.progress;
+      const beforeFilename = task.filename;
+      _applyProgressLine(task, line);
+      if (task.progress !== beforeProgress || task.filename !== beforeFilename) {
+        task.updatedAt = Date.now();
+        if (task._phase === 'merging') {
           broadcast('task-progress', task);
+        } else if (task.filename !== beforeFilename) {
+          broadcast('task-updated', task);
+        } else {
+          hasProgressUpdate = true;
         }
       }
-      // 解析 [download] Destination: ... → 获取文件名 (排除封面图)
-      if (line.startsWith('[download] Destination:')) {
-        const fp = line.substring('[download] Destination: '.length).trim();
-        // 只记录视频/音频主文件, 排除中间分片 .m4s/.tmp/.part
-        if (fp && !/\.(webp|jpe?g|png|gif|info\.json)$/i.test(fp)) {
-          const base = path.basename(fp);
-          // yt-dlp 在 ffmpeg 合并后会输出最终文件名, 保留它
-          if (/\.(mp4|mkv|webm|m4a|mp3|opus|flac|wav|ts)$/i.test(base)) {
-            task.filename = base;
-          }
-        }
-      }
-      // 解析 [info] ... format(s): XXp → 获取格式
-      if (line.includes('Downloading') && line.includes('format(s):')) {
-        const fm = line.match(/format\(s\):\s*(.+)/);
-        if (fm) task.format = fm[1].trim();
-      }
+    }
+    if (hasProgressUpdate) {
+      broadcast('task-progress', task);
     }
   });
   proc.stderr.on('data', (chunk) => {
