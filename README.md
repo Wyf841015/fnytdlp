@@ -179,6 +179,21 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 
 ## 版本历史
 
+### v0.2.5 (2026-06-11)
+
+**Bug 修复**
+
+- 多流下载友好界面：视频/音频两段子进度条（video cap 50% 防"两次 100%"），合并阶段显示 99%
+- 临时文件名暂存：`xxx.f100026.mp4` 分片不覆盖 `task.filename`，合并后最终 `.mp4` 才展示
+- 任务详情存储位置包含子目录：路径改为 `downloadPath/video_xxx/xxx.mp4`
+- 格式显示改为人类可读：`100026+30280` → `1080p HEVC · mp4 + 128k mp4a · m4a`
+- 部署目录权限修复：新加文件使用 `install -m 644 -o package -g package` 替代 cp
+
+**新功能**
+
+- `describeFormatIds()` 反查 formats 数组，formatId → 分辨率/编码/码率
+- `showTaskDetail` 优先显示 `formatDescription`
+
 ### v0.2.0 (2026-06-10)
 
 **Bug 修复**
