@@ -601,9 +601,12 @@ const startTask = (id) => {
   });
   _procs.set(id, proc);
   let stderrBuf = '';
+  let stdoutBuf = ''; // 跨 chunk 累积, 避免 PROGRESS 行被截断
   proc.stdout.on('data', (chunk) => {
-    const text = chunk.toString('utf8');
-    for (const line of text.split('\n')) {
+    stdoutBuf += chunk.toString('utf8');
+    const lines = stdoutBuf.split('\n');
+    stdoutBuf = lines.pop() || ''; // 最后一段 (可能不完整) 留到下次
+    for (const line of lines) {
       // 解析 PROGRESS 行: PROGRESS|XX.X%|speed_str|eta_str|downloaded_bytes|total_bytes|total_bytes_estimate|DONE
       if (line.startsWith('PROGRESS|')) {
         const parts = line.split('|');
