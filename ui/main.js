@@ -567,8 +567,7 @@ window.deleteTask = deleteTask;
 const confirmDelete = async (withFile) => {
   if (!deleteTargetId) return;
   const id = deleteTargetId;
-  const url = `/api/tasks/${id}${withFile ? '?deleteFile=1' : ''}`;
-  await API.del(url);
+  await API.del(`/api/tasks/${id}${withFile ? '?deleteFile=1' : ''}`);
   deleteTargetId = null;
   hideModal('deleteModal');
   toast(withFile ? '已删除任务和文件夹' : '已删除任务记录', 'success');

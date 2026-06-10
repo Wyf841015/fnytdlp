@@ -403,16 +403,27 @@ const deleteTask = (id, opts = {}) => {
     try { _procs.get(id).kill('SIGTERM'); } catch (e) {}
     _procs.delete(id);
   }
-  // 删除下载文件夹
+  // 删除下载文件夹 (只有 deleteFile=true 时删)
   if (opts.deleteFile) {
-    const folder = task.options?._downloadFolder;
-    if (folder && fs.existsSync(folder)) {
-      try {
-        fs.rmSync(folder, { recursive: true, force: true });
-        LOG('[deleteTask] deleted folder:', folder);
-      } catch (e) {
-        LOG('[deleteTask] failed to delete folder:', e.message);
+    let folder = task.options?._downloadFolder;
+    // 兜底: 如果 _downloadFolder 不存在, 尝试用 downloadFolder + downloadPath 拼
+    if (!folder && task.downloadFolder && config.downloadPath) {
+      folder = path.join(config.downloadPath, task.downloadFolder);
+    }
+    if (folder) {
+      LOG('[deleteTask] attempting to delete folder:', folder);
+      if (fs.existsSync(folder)) {
+        try {
+          fs.rmSync(folder, { recursive: true, force: true });
+          LOG('[deleteTask] deleted folder:', folder);
+        } catch (e) {
+          LOG('[deleteTask] failed to delete folder:', e.message);
+        }
+      } else {
+        LOG('[deleteTask] folder not found:', folder);
       }
+    } else {
+      LOG('[deleteTask] no folder path available for task:', task.id);
     }
   }
   tasks.delete(id);

@@ -484,12 +484,12 @@
     <div class="modal-body">
       <p>确认删除此任务?</p>
       <div id="deleteTaskInfo" class="info-preview"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="hideModal('deleteModal')">取消</button>
-      <button class="btn btn-danger" onclick="try{confirmDelete()}catch(e){console.error(e)}">仅删除记录</button>
-      <button class="btn btn-danger" onclick="try{confirmDelete(true)}catch(e){console.error(e)}">删除记录+文件夹</button>
-    </div>
+      </div>
+      <div class="modal-footer" style="gap:8px">
+        <button class="btn btn-ghost" onclick="try{hideModal('deleteModal')}catch(e){console.error(e)}">取消</button>
+        <button class="btn btn-secondary" onclick="try{confirmDelete(false)}catch(e){console.error(e)}">仅删除记录</button>
+        <button class="btn btn-danger" onclick="try{confirmDelete(true)}catch(e){console.error(e)}">删除记录+文件夹</button>
+      </div>
   </div>
 </div>
 
