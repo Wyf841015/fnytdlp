@@ -233,7 +233,9 @@ const _sseClients = new Set();
 const broadcast = (event, data) => {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const client of _sseClients) {
-    try { client.write(msg); } catch (e) { /* dead client */ }
+    try { client.write(msg); } catch (e) {
+      _sseClients.delete(client);
+    }
   }
 };
 const handleSSE = (req, res) => {
@@ -264,9 +266,14 @@ const listCookies = () => (config.cookies || []).map(c => ({ name: c.name, domai
 const addCookie = (name, domain, content) => {
   ensureCookiesDir();
   if (!name || typeof name !== 'string') throw new Error('name required');
+  content = String(content).trim();
+  // 校验: 大小限制 100KB
+  if (content && content.length > 102400) {
+    throw new Error('Cookie content too large (max 100KB)');
+  }
   // 校验: 必须含 tab 分隔的 Netscape 格式; 若无 tab 至少 20 字符 (兜底)
-  if (!content || (!content.includes('\t') && content.length < 20)) {
-    throw new Error('Invalid cookie content (must be tab-separated Netscape format, e.g. ".example.com\\tTRUE\\t/\\tFALSE\\t0\\tNAME\\tVALUE")');
+  if (!content || (!content.includes('\\t') && content.length < 20)) {
+    throw new Error('Invalid cookie content (must be tab-separated Netscape format, e.g. ".example.com\\\\tTRUE\\\\t/\\\\tFALSE\\\\t0\\\\tNAME\\\\tVALUE")');
   }
   const list = config.cookies || [];
   const idx = list.findIndex(c => c.name === name);
@@ -303,6 +310,12 @@ const isSafeDownloadPath = (target) => {
 const createTask = (url, options = {}) => {
   if (!isValidUrl(url)) {
     throw new Error(`Invalid URL (only http/https allowed): ${url}`);
+  }
+  // 去重: 相同 URL 且状态为 downloading/pending 时拒绝
+  for (const [id, t] of tasks) {
+    if (t.url === url && (t.status === 'pending' || t.status === 'downloading')) {
+      throw new Error(`任务已存在: ${url} (${id})`);
+    }
   }
   _taskIdCounter++;
   const id = `t_${crypto.randomUUID().slice(0, 8)}`;
@@ -485,7 +498,10 @@ const buildYtDlpArgs = (task) => {
   // 增量下载 (避免重复)
   if (config.downloadArchive) {
     const ap = path.isAbsolute(config.downloadArchive) ? config.downloadArchive : path.join(DATA_DIR, config.downloadArchive);
-    args.push('--download-archive', ap);
+    // 限制 archive 文件必须在 DATA_DIR 下 (防止路径穿越)
+    if (path.resolve(ap).startsWith(path.resolve(DATA_DIR + '/'))) {
+      args.push('--download-archive', ap);
+    }
   }
   // mtime: true=用 Last-Modified (默认), false=用下载时间
   if (!config.mtime) args.push('--no-mtime');
@@ -702,11 +718,17 @@ const infoUrl = (url) => {
     if (!isValidUrl(url)) return reject(new Error('Invalid URL'));
     const proc = spawn(YT_DLP_BIN, ['--dump-json', '--no-download', '--no-warnings', url], {
       env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' },
+      timeout: 30000,
     });
     let out = '', err = '';
     proc.stdout.on('data', c => out += c);
     proc.stderr.on('data', c => err += c);
+    const timer = setTimeout(() => {
+      try { proc.kill('SIGTERM'); } catch (e) {}
+      reject(new Error('yt-dlp info timeout (30s)'));
+    }, 30000);
     proc.on('close', (code) => {
+      clearTimeout(timer);
       if (code !== 0) return reject(new Error(err.trim() || `exit ${code}`));
       try {
         const info = JSON.parse(out);
@@ -823,6 +845,13 @@ const handle = async (req, res) => {
       const browsePath = u.searchParams.get('path') || config.downloadPath || DATA_DIR;
       try {
         const resolved = path.resolve(browsePath);
+        // P0: 禁止浏览系统敏感目录
+        const blocked = ['/etc', '/proc', '/sys', '/dev', '/boot', '/lost+found'];
+        for (const b of blocked) {
+          if (resolved === b || resolved.startsWith(b + '/')) {
+            return sendJSON(res, 403, { error: '禁止浏览系统目录' });
+          }
+        }
         if (!fs.existsSync(resolved)) {
           return sendJSON(res, 404, { error: '路径不存在', path: resolved });
         }
@@ -875,10 +904,6 @@ const handle = async (req, res) => {
         if (!resolved || resolved === '/') {
           return sendJSON(res, 400, { error: 'Invalid downloadPath' });
         }
-      }
-      // 其他路径字段仍使用 isSafeDownloadPath 校验
-      if (newCfg.otherPath && !isSafeDownloadPath(newCfg.otherPath)) {
-        return sendJSON(res, 400, { error: 'otherPath must be inside ' + config.downloadPath });
       }
       config = newCfg;
       saveConfig();
@@ -935,7 +960,16 @@ const handle = async (req, res) => {
 
 const parseBody = (req) => new Promise((resolve, reject) => {
   let body = '';
-  req.on('data', c => body += c);
+  let bytes = 0;
+  const MAX_BODY = 2097152; // 2MB
+  req.on('data', c => {
+    bytes += c.length;
+    if (bytes > MAX_BODY) {
+      req.destroy(new Error('Request body too large (max 2MB)'));
+      return;
+    }
+    body += c;
+  });
   req.on('end', () => {
     if (!body) return resolve({});
     try { resolve(JSON.parse(body)); } catch (e) { reject(new Error('Invalid JSON')); }
@@ -1008,6 +1042,17 @@ const main = () => {
   };
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+  // yt-dlp 健康检查
+  try {
+    const testProc = spawn(YT_DLP_BIN, ['--version'], { timeout: 5000, env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' } });
+    let vOut = '';
+    testProc.stdout.on('data', c => vOut += c);
+    testProc.on('close', (code) => {
+      if (code === 0) LOG('[yt-dlp] version=' + vOut.trim());
+      else LOG('[WARN] yt-dlp check exit=' + code);
+    });
+    testProc.on('error', (e) => LOG('[WARN] yt-dlp not available: ' + e.message));
+  } catch (e) { LOG('[WARN] yt-dlp check failed: ' + e.message); }
   LOG('=== server ready ===');
 };
 

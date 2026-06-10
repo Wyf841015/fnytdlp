@@ -9,7 +9,7 @@
 console.log('[fnytdlp] main.js loaded, version=0.1.0');
 
 // ── API client (统一网关模式) ──────────────────────────────────────
-const GATEWAY_BASE = (typeof window !== 'undefined' && window.GATEWAY_BASE) || '/app/fnytdlp';
+const GATEWAY_BASE = (typeof window !== 'undefined' && window.GATEWAY_BASE) || (self.location?.pathname?.startsWith('/app/') ? '/app/fnytdlp' : '');
 const API = {
   _url(path) {
     // 绝对路径: 直接拼 GATEWAY_BASE + path
@@ -455,7 +455,9 @@ const submitAddTask = async () => {
   const urls = $('addUrls').value.trim().split('\n').map(s => s.trim()).filter(Boolean);
   if (urls.length === 0) { toast('请粘贴 URL', 'warn'); return; }
   const options = {};
-  const fmt = $('addFormat').value.trim();
+  const fmtSelect = $('addFormat').value.trim();
+  const fmtCustom = $('addFormatCustom').value.trim();
+  const fmt = fmtCustom || fmtSelect;
   if (fmt) options.format = fmt;
   const ot = $('addOutputTemplate').value.trim();
   if (ot) options.outputTemplate = ot;
@@ -563,6 +565,16 @@ const batchStop = async () => {
   clearBatchSelection();
   await loadTasks();
 };
+const batchStart = async () => {
+  if (_batchSelected.size === 0) return;
+  const ids = [..._batchSelected];
+  for (const id of ids) {
+    try { await API.post(`/api/tasks/${id}/retry`); } catch (e) { console.warn('batch start failed', id, e); }
+  }
+  toast(`已启动 ${ids.length} 个任务`, 'success');
+  clearBatchSelection();
+  await loadTasks();
+};
 const batchDelete = async () => {
   if (_batchSelected.size === 0) return;
   const ids = [..._batchSelected];
@@ -579,6 +591,7 @@ window.toggleSelectAll = toggleSelectAll;
 window.clearBatchSelection = clearBatchSelection;
 window.batchRetry = batchRetry;
 window.batchStop = batchStop;
+window.batchStart = batchStart;
 window.batchDelete = batchDelete;
 
 // 通用函数式 loading 守卫: 期间禁用按钮, 避免用户重复点击导致 N 次请求

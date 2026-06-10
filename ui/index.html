@@ -55,7 +55,7 @@
         </div>
       </div>
       <div class="header-actions">
-        <button type="button" class="btn-icon" id="themeBtn" title="切换主题" onclick="toggleTheme()">☀️</button>
+        <button type="button" class="btn-icon" id="themeBtn" title="切换主题" onclick="toggleTheme()">🎨</button>
         <button type="button" class="btn-icon" id="sponsorBtn" title="赞助" onclick="showModal('sponsorModal')">❤</button>
       </div>
     </div>
@@ -136,6 +136,7 @@
         <button class="btn btn-ghost btn-sm" onclick="clearBatchSelection()" aria-label="取消选择">✕ 取消</button>
         <button class="btn btn-ghost btn-sm" onclick="batchRetry()" aria-label="批量重试">🔄 重试</button>
         <button class="btn btn-ghost btn-sm" onclick="batchStop()" aria-label="批量停止">⏹ 停止</button>
+        <button class="btn btn-ghost btn-sm" onclick="batchStart()" aria-label="批量启动">▶ 启动</button>
         <button class="btn btn-danger btn-sm" onclick="batchDelete()" aria-label="批量删除">🗑 删除</button>
       </div>
     </div>
@@ -204,10 +205,17 @@
           <option value="bv*+ba[acodec=mp3]">最佳画质 + MP3 音频</option>
           <option value="b/b">最佳 (单文件)</option>
           <option value="worst">最小体积</option>
+          <option value="bv*[height<=4320]+ba">8K 限高</option>
+          <option value="bv*[height<=2160]+ba">4K 限高</option>
+          <option value="bv*[height<=1440]+ba">2K 限高</option>
           <option value="bv*[height<=1080]+ba">1080p 限高</option>
           <option value="bv*[height<=720]+ba">720p 限高</option>
           <option value="bv*[height<=480]+ba">480p 限高</option>
+          <option value="ba">仅音频 (最佳)</option>
+          <option value="ba/b">仅音频 (最佳/降级)</option>
+          <option value="worstaudio">仅音频 (最小)</option>
         </select>
+        <div class="form-hint">或用自定义格式: <input class="input input-inline" id="addFormatCustom" placeholder="例: bv*[height<=1080][fps<=30]+ba" style="width:240px"></div>
       </div>
       <details class="form-advanced">
         <summary>高级选项</summary>
@@ -479,8 +487,8 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="hideModal('deleteModal')">取消</button>
-      <button class="btn btn-danger" onclick="confirmDelete()">仅删除记录</button>
-      <button class="btn btn-danger" onclick="confirmDelete(true)">删除记录+文件</button>
+      <button class="btn btn-danger" onclick="try{confirmDelete()}catch(e){console.error(e)}">仅删除记录</button>
+      <button class="btn btn-danger" onclick="try{confirmDelete(true)}catch(e){console.error(e)}">删除记录+文件</button>
     </div>
   </div>
 </div>
