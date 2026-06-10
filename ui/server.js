@@ -87,9 +87,12 @@ const ts = () => {
 // yt-dlp _speed_str 示例: "1.23MiB/s", "500KiB/s", "12.3MB/s", "Unknown B/s", "0KiB/s"
 const parseSpeed = (s) => {
   if (!s || s === 'Unknown B/s' || s === 'N/A') return 0;
-  const m = String(s).match(/^([\d.]+)\s*(KiB|MiB|GiB|KB|MB|GB|B)\/s$/i);
+  // yt-dlp _speed_str 格式: " 752.21KiB/s" (前导空格) 或 " 1.05MiB/s"
+  // 兼容: 1)前导空格 2)NaN 3)未知单位
+  const m = String(s).trim().match(/^([\d.]+)\s*(KiB|MiB|GiB|KB|MB|GB|B)\/s$/i);
   if (!m) return 0;
   const v = parseFloat(m[1]);
+  if (isNaN(v)) return 0;
   const unit = m[2].toUpperCase();
   const mult = { B: 1, KB: 1024, MB: 1024**2, GB: 1024**3, KIB: 1024, MIB: 1024**2, GIB: 1024**3 }[unit] || 1;
   return Math.round(v * mult);
