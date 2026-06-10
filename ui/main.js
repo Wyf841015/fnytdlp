@@ -939,11 +939,15 @@ window.deleteCookie = deleteCookie;
 
 // ── Image Full Zoom ────────────────────────────────────────────────
 function showImgFull(img) {
+  console.log('[fnytdlp] showImgFull called, src=', img && img.src);
   const overlay = document.getElementById('imgFullOverlay');
   const fullImg = document.getElementById('imgFull');
+  console.log('[fnytdlp] overlay=', !!overlay, 'fullImg=', !!fullImg);
   if (!overlay || !fullImg) return;
   fullImg.src = img.src;
   overlay.classList.add('show');
+  console.log('[fnytdlp] overlay.show=', overlay.classList.contains('show'),
+    'computed display=', getComputedStyle(overlay).display);
 }
 window.showImgFull = showImgFull;
 
