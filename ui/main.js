@@ -1121,14 +1121,15 @@ document.addEventListener('DOMContentLoaded', async () => {
           const raw = m[2].trim();
           if (raw) {
             // 支持单引号参数 (如 'sponsorModal', 't_xxx')
-            const args = raw.split(',').map(s => {
+            const args = raw.split(',').map(function(s) {
               s = s.trim();
+              if (s === 'this') return this; // 实际 DOM 元素
               if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
                 return s.slice(1, -1);
               }
               // 数字/布尔/对象
               try { return JSON.parse(s); } catch (e) { return s; }
-            });
+            }, this); // <-- 把 this (当前元素) 传给 map 的 thisArg
             window[m[1]](...args);
           } else {
             window[m[1]]();
