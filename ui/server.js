@@ -348,9 +348,9 @@ const createTask = (url, options = {}) => {
 
 const listTasks = (filter = {}) => {
   let arr = Array.from(tasks.values());
-  // 兜底: completed 任务若 filename 为空, 从 downloadPath 找最新文件
+  // 兜底: completed 任务若 filename 为空或是封面图, 从 downloadPath 找最新文件
   for (const t of arr) {
-    if (t.status === 'completed' && !t.filename) {
+    if (t.status === 'completed' && (!t.filename || /\.(webp|jpe?g|png|gif|info\.json)$/i.test(t.filename))) {
       try {
         const files = fs.readdirSync(config.downloadPath)
           .map(f => {
@@ -593,10 +593,10 @@ const startTask = (id) => {
           broadcast('task-progress', task);
         }
       }
-      // 解析 [download] Destination: ... → 获取文件名
+      // 解析 [download] Destination: ... → 获取文件名 (排除封面图)
       if (line.startsWith('[download] Destination:')) {
         const fp = line.substring('[download] Destination: '.length).trim();
-        if (fp) task.filename = path.basename(fp);
+        if (fp && !/\.(webp|jpe?g|png|gif|info\.json)$/i.test(fp)) task.filename = path.basename(fp);
       }
       // 解析 [info] ... format(s): XXp → 获取格式
       if (line.includes('Downloading') && line.includes('format(s):')) {

@@ -611,8 +611,10 @@ const withButtonLoading = async (btn, fn) => {
 };
 
 const clearCompleted = async () => {
+  const completed = tasks.filter(t => t.status === 'completed' || t.status === 'error');
+  if (completed.length === 0) { toast('没有已完成或出错的任务', 'info'); return; }
+  if (!await showConfirm('确认清理', `确认清理 ${completed.length} 个已完成/出错的任务? (仅记录, 不删文件)`)) return;
   return withButtonLoading(document.querySelector('button[onclick*="clearCompleted"]'), async () => {
-    const completed = tasks.filter(t => t.status === 'completed' || t.status === 'error');
     let ok = 0;
     for (const t of completed) {
       try {
