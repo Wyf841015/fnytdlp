@@ -527,7 +527,13 @@ const submitAddTask = async () => {
   }
 
   let ok = 0, fail = 0;
+  let skipped = 0;
   for (const url of unique) {
+    // 前端去重: 已有 downloading/pending 任务时跳过
+    if (tasks.some(t => t.url === url && (t.status === 'pending' || t.status === 'downloading'))) {
+      skipped++;
+      continue;
+    }
     try {
       const body = { url, options };
       // 传入已缓存的解析结果, 后端跳过第二次 infoUrl
@@ -538,7 +544,8 @@ const submitAddTask = async () => {
     } catch (e) { fail++; }
   }
   hideModal('addTaskModal');
-  toast(`已添加 ${ok} 个任务${fail ? '，' + fail + ' 失败' : ''}`, fail ? 'warn' : 'success');
+  const msg = `已添加 ${ok} 个任务` + (skipped ? `（${skipped} 跳过）` : '') + (fail ? `，${fail} 失败` : '');
+  toast(msg, (skipped || fail) ? 'warn' : 'success');
   await loadTasks();
 };
 window.submitAddTask = submitAddTask;

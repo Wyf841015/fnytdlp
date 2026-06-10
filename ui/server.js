@@ -772,28 +772,46 @@ const parseAndCreateTask = async (url, options = {}) => {
   // 4. 创建目录
   fs.mkdirSync(folderPath, { recursive: true });
   LOG('[parseAndCreateTask] created folder:', folderPath);
-  // 5. 写入 info.txt (包含完整元数据)
-  const infoContent = {
-    url,
-    title: rawInfo?.title || '',
-    id: rawInfo?.id || '',
-    duration: rawInfo?.duration || 0,
-    uploader: rawInfo?.uploader || '',
-    uploadDate: rawInfo?.uploadDate || '',
-    viewCount: rawInfo?.viewCount || 0,
-    likeCount: rawInfo?.likeCount || 0,
-    description: rawInfo?.description || '',
-    extractor: rawInfo?.extractor || '',
-    webpage_url: rawInfo?.webpage_url || '',
-    formats: rawInfo?.formats || [],
-    subtitles: rawInfo?.subtitles || [],
-    parsedAt: new Date().toISOString(),
-    downloadStartedAt: new Date().toISOString(),
-    cookieName: options.cookieName || '',
+  // 4.5 若后续步骤失败, 必须清理已创建的文件夹, 避免孤儿目录
+  const cleanupOnFail = (e) => {
+    try {
+      fs.rmSync(folderPath, { recursive: true, force: true });
+      LOG('[parseAndCreateTask] cleaned up folder after error:', folderPath, e?.message);
+    } catch (rmErr) { LOG('cleanup folder failed:', rmErr.message); }
   };
-  fs.writeFileSync(path.join(folderPath, 'info.txt'), JSON.stringify(infoContent, null, 2), 'utf8');
+  // 5. 写入 info.txt (包含完整元数据)
+  try {
+    const infoContent = {
+      url,
+      title: rawInfo?.title || '',
+      id: rawInfo?.id || '',
+      duration: rawInfo?.duration || 0,
+      uploader: rawInfo?.uploader || '',
+      uploadDate: rawInfo?.uploadDate || '',
+      viewCount: rawInfo?.viewCount || 0,
+      likeCount: rawInfo?.likeCount || 0,
+      description: rawInfo?.description || '',
+      extractor: rawInfo?.extractor || '',
+      webpage_url: rawInfo?.webpage_url || '',
+      formats: rawInfo?.formats || [],
+      subtitles: rawInfo?.subtitles || [],
+      parsedAt: new Date().toISOString(),
+      downloadStartedAt: new Date().toISOString(),
+      cookieName: options.cookieName || '',
+    };
+    fs.writeFileSync(path.join(folderPath, 'info.txt'), JSON.stringify(infoContent, null, 2), 'utf8');
+  } catch (e) {
+    cleanupOnFail(e);
+    throw e;
+  }
   // 6. 创建任务, 将 downloadFolder 写在 options 里
-  const task = createTask(url, { ...options, _downloadFolder: folderPath });
+  let task;
+  try {
+    task = createTask(url, { ...options, _downloadFolder: folderPath });
+  } catch (e) {
+    cleanupOnFail(e);
+    throw e;
+  }
   // 在 task 上记录额外字段
   task.title = rawInfo?.title || '';
   task.duration = rawInfo?.duration || 0;
