@@ -179,6 +179,18 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 
 ## 版本历史
 
+### v0.2.0 (2026-06-10)
+
+**Bug 修复**
+
+- 文件名显示封面图：`[download] Destination:` 解析时过滤 `.webp/.jpg/.png/.gif` 封面扩展名；已完成旧任务兜底扫描也检查 filename 是否为封面图
+- 工具栏清理按钮无确认框：`clearCompleted` 增加 `showConfirm` 弹窗
+- 赞助大图点击不放大：inline onclick 重绑定不支持 `this` 关键字，箭头函数改 `function` + `thisArg`
+
+**安全加固**
+
+- 清理已完成任务前增加确认弹窗，防止误操作
+
 ### v0.1.0 (2026-06-09)
 
 **核心功能**
@@ -243,6 +255,11 @@ node --test tests/test_modules.js
 > 本应用打包了 [yt-dlp](https://github.com/yt-dlp/yt-dlp)（Unlicense 公共领域），保留完整 LICENSE 文本。
 
 ## 更新日志
+
+### v0.2.0 (2026-06-10)
+- fix: Destination 封面图过滤（实时解析 + 旧任务兜底）
+- fix: toolbar 清理按钮加 showConfirm 确认框
+- fix: 赞助大图点击不放大（inline onclick this 关键字修复）
 
 ### v0.1.0 (2026-06-09)
 - 集成 yt-dlp 1872+ 站点支持

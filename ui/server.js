@@ -30,7 +30,7 @@ import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 // ── version (保持与 manifest 一致 ────────────────────────────────────────
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 // ── paths ──────────────────────────────────────────────────────────────
 const PKGVAR    = process.env.TRM_PKGVAR || process.env.TRIM_PKGVAR || null;
 const APPDEST   = process.env.TRIM_APPDEST || null;
