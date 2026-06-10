@@ -262,12 +262,13 @@ const renderTasks = () => {
     _sel.checked = selectedVisible.length === visibleIds.length && visibleIds.size > 0;
     _sel.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleIds.size;
   }
+  // 用 .visible class 切显隐 (避免 backdrop-filter 破坏 [hidden])
   const _h = $('taskListHeader');
-  if (_h) _h.hidden = filtered.length === 0;
+  if (_h) _h.classList.toggle('visible', filtered.length > 0);
   const _b = $('batchBar');
   if (_b) {
     $('batchCount').textContent = _batchSelected.size;
-    _b.hidden = _batchSelected.size === 0;
+    _b.classList.toggle('visible', _batchSelected.size > 0);
   }
 };
 

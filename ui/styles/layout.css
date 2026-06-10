@@ -509,13 +509,16 @@
 
 /* ===== Task List ===== */
 .task-list-header {
-  display: flex;
+  display: none;  /* 默认隐藏, 有任务时 JS 加 .visible */
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
   margin-bottom: 8px;
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+.task-list-header.visible {
+  display: flex;
 }
 
 .batch-select-all {

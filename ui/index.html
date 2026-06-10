@@ -129,8 +129,8 @@
       <button class="tab" data-filter="error" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="出错任务">出错 <span class="count" id="countError">0</span></button>
     </div>
 
-    <!-- 批量操作栏 (M-7) -->
-    <div class="batch-bar" id="batchBar" hidden>
+    <!-- 批量操作栏 (M-7) — 默认隐藏, JS 加 .visible 显示 -->
+    <div class="batch-bar" id="batchBar">
       <span class="batch-count">已选 <strong id="batchCount">0</strong> 项</span>
       <div class="batch-actions">
         <button class="btn btn-ghost btn-sm" onclick="clearBatchSelection()" aria-label="取消选择">✕ 取消</button>
@@ -141,7 +141,7 @@
     </div>
 
     <!-- Task List -->
-    <div class="task-list-header" id="taskListHeader" hidden>
+    <div class="task-list-header" id="taskListHeader">
       <label class="batch-select-all">
         <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)">
         全选

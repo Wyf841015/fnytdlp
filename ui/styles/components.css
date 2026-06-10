@@ -746,10 +746,10 @@ html[data-theme='light'] .toast.info {
 
 /* ===== Batch Bar (inline, inside main) ===== */
 .batch-bar {
+  display: none;  /* 默认隐藏, 选中后 JS 加 .visible 类 */
   position: sticky;
   bottom: 56px;
   z-index: 50;
-  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -763,9 +763,11 @@ html[data-theme='light'] .toast.info {
   border: 1px solid var(--accent-border);
   border-radius: var(--radius);
   box-shadow: 0 4px 20px hsl(0, 0%, 0% / 0.2), 0 0 0 1px var(--accent-glow);
-  animation: batchBarSlide 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   overflow: hidden;
-  position: sticky;
+}
+.batch-bar.visible {
+  display: flex;
+  animation: batchBarSlide 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .batch-bar::before {
   content: '';
