@@ -885,7 +885,7 @@ window.openBrowseModal = openBrowseModal;
 window.browseEnterDir = browseEnterDir;
 window.browseGoUp = browseGoUp;
 window.browseSelectCurrent = browseSelectCurrent;
-// 工具栏设置按钮用 onclick="showSettingsModal()" 已在 HTML 绑定
+window.showSettingsModal = showSettingsModal;
 
 // ── Cookie Modal (多网站) ─────────────────────────────────────────
 const renderCookieList = (cookies) => {
