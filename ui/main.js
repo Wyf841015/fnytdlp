@@ -433,8 +433,9 @@ const parseUrls = async () => {
   if (urls.length === 0) { toast('请先粘贴 URL', 'warn'); return; }
   const url = urls[0];
   $('addPreview').textContent = '⏳ 解析中...';
+  const cookieName = $('addCookieName')?.value?.trim() || '';
   try {
-    const info = await API.post('/api/info', { url });
+    const info = await API.post('/api/info', { url, cookieName });
     $('addPreview').innerHTML = `
       <div class="info-card">
         <img class="info-thumb" src="${esc(info.thumbnail || '')}" onerror="this.style.display='none'">
@@ -997,6 +998,54 @@ function showTaskDetail(id) {
   } else if (errRow) {
     errRow.style.display = 'none';
   }
+  // feat4: 加载 info.txt 内容
+  const infoRow = $('tdInfoRow');
+  if (infoRow) {
+    const hasFolder = t.options?._downloadFolder || t.downloadFolder;
+    if (hasFolder) {
+      infoRow.style.display = 'flex';
+      const pre = $('tdInfoContent');
+      if (pre) pre.textContent = '(加载中...)';
+      API.get(`/api/tasks/${t.id}/info_content`).then(r => {
+        if (r && r.content) {
+          if (pre) {
+            try {
+              const parsed = JSON.parse(r.content);
+              // 格式化显示: 只显示关键字段, 不显示 raw formats/subtitles
+              const display = {
+                标题: parsed.title || '',
+                视频ID: parsed.id || '',
+                地址: parsed.webpage_url || parsed.url || '',
+                时长: parsed.duration ? formatDuration(parsed.duration) : '',
+                上传者: parsed.uploader || '',
+                发布日期: parsed.uploadDate || '',
+                观看: parsed.viewCount || 0,
+                点赞: parsed.likeCount || 0,
+                简介: parsed.description ? parsed.description.substring(0, 500) : '',
+                提取器: parsed.extractor || '',
+                Cookie: parsed.cookieName || '',
+                解析时间: parsed.parsedAt ? new Date(parsed.parsedAt).toLocaleString('zh-CN') : '',
+                下载开始: parsed.downloadStartedAt ? new Date(parsed.downloadStartedAt).toLocaleString('zh-CN') : '',
+                格式数量: (parsed.formats || []).length + ' 个',
+              };
+              pre.textContent = Object.entries(display)
+                .filter(([, v]) => v !== '' && v !== 0 && v !== '0')
+                .map(([k, v]) => `${k}: ${v}`)
+                .join('\n');
+            } catch (e) {
+              pre.textContent = r.content.substring(0, 2000);
+            }
+          }
+        } else {
+          if (pre) pre.textContent = '(info.txt 不存在)';
+        }
+      }).catch(() => {
+        if (pre) pre.textContent = '(加载失败)';
+      });
+    } else {
+      infoRow.style.display = 'none';
+    }
+  }
   showModal('taskDetailModal');
 }
 window.showTaskDetail = showTaskDetail;
@@ -1101,6 +1150,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   // M-3: 搜索栏实时过滤
   const _searchInput = $('searchInput');
   if (_searchInput) _searchInput.addEventListener('input', () => renderTasks());
+  // feat1: 粘贴时自动提取 URL (过滤非 URL 文本)
+  const _addUrls = $('addUrls');
+  if (_addUrls) {
+    _addUrls.addEventListener('paste', function() {
+      // 延迟执行让粘贴内容先写入 textarea
+      setTimeout(() => {
+        const raw = _addUrls.value.trim();
+        if (!raw) return;
+        // 提取 http/https URL
+        const urlRegex = /https?:\/\/[^\s<>"']+/g;
+        const urls = raw.match(urlRegex);
+        if (urls && urls.length > 0) {
+          _addUrls.value = urls.join('\n');
+          // 自动触发解析 (只对单 URL)
+          if (urls.length === 1 && typeof parseUrls === 'function') {
+            parseUrls();
+          }
+        }
+      }, 10);
+    });
+  }
   // M-8: 每 30s 刷新一次"已用时间"显示
   setInterval(() => {
     if (tasks.some(t => t.status === 'downloading' || t.status === 'processing')) {

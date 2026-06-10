@@ -103,6 +103,10 @@ const parseDuration = (s) => {
   if (parts.length === 1) return parts[0];
   return 0;
 };
+const sanitizeFilename = (s) => {
+  // 保留中文/字母/数字/空格/横线/下划线/点/括号, 移除危险字符
+  return String(s || 'video').replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, ' ').trim().substring(0, 128) || 'video';
+};
 const LOG = (...args) => {
   const line = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
   fs.appendFileSync(LOG_FILE, ts() + ' ' + line + '\n');
@@ -438,7 +442,9 @@ const buildYtDlpArgs = (task) => {
   args.push('--progress-template', 'PROGRESS|%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|DONE');
   // 输出模板
   const outTpl = config.outputTemplate || DEFAULT_CONFIG.outputTemplate;
-  args.push('-o', path.join(config.downloadPath, outTpl));
+  // feat3: 如果有下载文件夹则使用文件夹路径, 否则用默认 downloadPath
+  const outputBase = opts._downloadFolder || config.downloadPath;
+  args.push('-o', path.join(outputBase, outTpl));
   // Format
   if (opts.format) args.push('-f', opts.format);
   else if (config.format) args.push('-f', config.format);
@@ -712,11 +718,79 @@ const retryTask = (id) => {
   return startTask(id);
 };
 
+// ── parseAndCreateTask: 先解析再建文件夹+info.txt, 然后开始下载 ──────────
+const parseAndCreateTask = async (url, options = {}) => {
+  // 1. 解析视频元数据获取标题
+  let title = '';
+  let rawInfo = null;
+  try {
+    rawInfo = await infoUrl(url, options.cookieName);
+    title = rawInfo?.title || '';
+  } catch (e) {
+    LOG('[parseAndCreateTask] infoUrl failed (will use URL as folder):', e.message);
+  }
+  // 2. 生成文件夹名 (safe folder name from title)
+  let folderName = sanitizeFilename(title || path.basename(url).substring(0, 64));
+  if (!folderName || folderName === 'video') {
+    // 兜底: 用 URL 哈希短标识
+    folderName = 'video_' + crypto.randomUUID().slice(0, 8);
+  }
+  let folderPath = path.join(config.downloadPath, folderName);
+  // 3. 重名检测: 如果目录已存在, 追加时间戳
+  if (fs.existsSync(folderPath)) {
+    const now = new Date();
+    const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+    folderName = `${folderName}_${ts}`;
+    folderPath = path.join(config.downloadPath, folderName);
+  }
+  // 4. 创建目录
+  fs.mkdirSync(folderPath, { recursive: true });
+  LOG('[parseAndCreateTask] created folder:', folderPath);
+  // 5. 写入 info.txt (包含完整元数据)
+  const infoContent = {
+    url,
+    title: rawInfo?.title || '',
+    id: rawInfo?.id || '',
+    duration: rawInfo?.duration || 0,
+    uploader: rawInfo?.uploader || '',
+    uploadDate: rawInfo?.uploadDate || '',
+    viewCount: rawInfo?.viewCount || 0,
+    likeCount: rawInfo?.likeCount || 0,
+    description: rawInfo?.description || '',
+    extractor: rawInfo?.extractor || '',
+    webpage_url: rawInfo?.webpage_url || '',
+    formats: rawInfo?.formats || [],
+    subtitles: rawInfo?.subtitles || [],
+    parsedAt: new Date().toISOString(),
+    downloadStartedAt: new Date().toISOString(),
+    cookieName: options.cookieName || '',
+  };
+  fs.writeFileSync(path.join(folderPath, 'info.txt'), JSON.stringify(infoContent, null, 2), 'utf8');
+  // 6. 创建任务, 将 downloadFolder 写在 options 里
+  const task = createTask(url, { ...options, _downloadFolder: folderPath });
+  // 在 task 上记录额外字段
+  task.title = rawInfo?.title || '';
+  task.duration = rawInfo?.duration || 0;
+  task.thumbnail = rawInfo?.thumbnail || '';
+  task.downloadFolder = folderName;
+  saveTasks();
+  // 7. 启动下载
+  startTask(task.id);
+  return task;
+};
+
 // ── /api/info (调用 yt-dlp --dump-json 解析单 URL 元数据) ──────────
-const infoUrl = (url) => {
+const infoUrl = (url, cookieName) => {
   return new Promise((resolve, reject) => {
     if (!isValidUrl(url)) return reject(new Error('Invalid URL'));
-    const proc = spawn(YT_DLP_BIN, ['--dump-json', '--no-download', '--no-warnings', url], {
+    const args = ['--dump-json', '--no-download', '--no-warnings'];
+    // Cookie support for parsing
+    if (cookieName && config.cookies && config.cookies.some(c => c.name === cookieName)) {
+      const fp = getCookieFile(cookieName);
+      if (fs.existsSync(fp)) args.push('--cookies', fp);
+    }
+    args.push(url);
+    const proc = spawn(YT_DLP_BIN, args, {
       env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' },
       timeout: 30000,
     });
@@ -800,14 +874,37 @@ const handle = async (req, res) => {
       const url = body.url?.trim();
       if (!url) return sendJSON(res, 400, { error: 'url is required' });
       if (!isValidUrl(url)) return sendJSON(res, 400, { error: `Invalid URL (only http/https allowed): ${url}` });
-      const task = createTask(url, body.options || {});
-      startTask(task.id);
-      sendJSON(res, 200, { task });
+      // feat3: 使用解析→建文件夹→info.txt→下载 流程
+      try {
+        const task = await parseAndCreateTask(url, body.options || {});
+        sendJSON(res, 200, { task });
+      } catch (e) {
+        // fallback: 如果 parseAndCreateTask 失败, 回退到旧流程直接创建任务
+        LOG('[POST /api/tasks] parseAndCreateTask failed, fallback:', e.message);
+        const task = createTask(url, body.options || {});
+        startTask(task.id);
+        sendJSON(res, 200, { task });
+      }
     } else if (pathname.startsWith('/api/tasks/') && req.method === 'GET') {
       const id = pathname.split('/')[3];
       const task = getTask(id);
       if (!task) return sendJSON(res, 404, { error: 'not found' });
       sendJSON(res, 200, { task });
+      // ── info_content: 读取 info.txt ──
+    } else if (pathname.match(/^\/api\/tasks\/([^/]+)\/info_content$/) && req.method === 'GET') {
+      const id = pathname.split('/')[3];
+      const task = getTask(id);
+      if (!task) return sendJSON(res, 404, { error: 'not found' });
+      const folder = task.options?._downloadFolder || (task.downloadFolder ? path.join(config.downloadPath, task.downloadFolder) : null);
+      if (!folder) return sendJSON(res, 404, { error: 'no download folder' });
+      const infoPath = path.join(folder, 'info.txt');
+      try {
+        if (!fs.existsSync(infoPath)) return sendJSON(res, 404, { error: 'info.txt not found' });
+        const content = fs.readFileSync(infoPath, 'utf8');
+        sendJSON(res, 200, { content });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
     } else if (pathname.startsWith('/api/tasks/') && pathname.endsWith('/start') && req.method === 'POST') {
       const id = pathname.split('/')[3];
       const task = getTask(id);
@@ -886,7 +983,7 @@ const handle = async (req, res) => {
       const url = body.url?.trim();
       if (!url) return sendJSON(res, 400, { error: 'url is required' });
       try {
-        const info = await infoUrl(url);
+        const info = await infoUrl(url, body.cookieName);
         sendJSON(res, 200, info);
       } catch (e) {
         sendJSON(res, 500, { error: e.message });

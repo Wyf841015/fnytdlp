@@ -562,6 +562,15 @@
       <div class="info-row"><span class="info-label">创建时间</span><span class="info-value" id="tdCreated">-</span></div>
       <div class="info-row"><span class="info-label">完成时间</span><span class="info-value" id="tdCompleted">-</span></div>
       <div class="info-row" id="tdErrorRow" style="display:none"><span class="info-label">错误信息</span><span class="info-value" id="tdError" style="color:var(--color-danger)">-</span></div>
+      <div class="info-row" id="tdInfoRow" style="display:none">
+        <span class="info-label">解析信息</span>
+        <div class="info-value">
+          <details class="info-details">
+            <summary>查看 info.txt</summary>
+            <pre id="tdInfoContent" class="info-pre" style="max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-size:12px;line-height:1.4;margin-top:4px">(加载中...)</pre>
+          </details>
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="hideModal('taskDetailModal')">关闭</button>
