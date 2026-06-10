@@ -1066,9 +1066,18 @@ function showTaskDetail(id) {
   API.get('/api/config').then(cfg => {
     window._config = cfg;
     const dlPath = cfg.downloadPath;
-    setText('tdLocation', dlPath ? (t.filename ? (dlPath + '/' + t.filename) : dlPath) : '(默认下载目录)');
+    // 真实路径 = dlPath + _downloadFolder (子目录) + filename
+    // 多流下载 (B 站/YouTube) 时 yt-dlp 在 _downloadFolder 子目录里下载分片
+    const folder = t._downloadFolder ? t._downloadFolder.replace(dlPath, '').replace(/^\//, '') : '';
+    const folderSuffix = folder ? (folder.endsWith('/') ? folder : folder + '/') : '';
+    if (dlPath) {
+      setText('tdLocation', t.filename ? (dlPath + '/' + folderSuffix + t.filename) : (dlPath + '/' + folderSuffix || dlPath));
+    } else {
+      setText('tdLocation', '(默认下载目录)');
+    }
   }).catch(() => {
-    setText('tdLocation', t.filename ? t.filename : '(默认下载目录)');
+    const folder = t._downloadFolder ? t._downloadFolder.split('/').pop() : '';
+    setText('tdLocation', t.filename ? (folder ? folder + '/' + t.filename : t.filename) : (folder || '(默认下载目录)'));
   });
   setText('tdStatus', ({pending:'⏳ 等待',downloading:'⏬ 下载中',processing:'🔄 处理',completed:'✅ 已完成',error:'❌ 出错',paused:'⏸ 暂停',stopped:'⏹ 停止'})[t.status] || t.status);
   setText('tdProgress', (t.progress || 0).toFixed(1) + '%' + (t.speed ? ` · ⚡ ${formatSpeed(t.speed)}` : ''));

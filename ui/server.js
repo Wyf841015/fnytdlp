@@ -358,6 +358,10 @@ const listTasks = (filter = {}) => {
   let arr = Array.from(tasks.values());
   // 兜底: completed 任务若 filename 为空或是封面图, 从 downloadPath 找最新文件
   for (const t of arr) {
+    // 暴露 _downloadFolder 给前端, 详情弹窗能拼出真实路径 (dlPath + folder + filename)
+    if (t.options && t.options._downloadFolder) {
+      t._downloadFolder = t.options._downloadFolder;
+    }
     if (t.status === 'completed' && (!t.filename || /\.(webp|jpe?g|png|gif|info\.json)$/i.test(t.filename))) {
       try {
         const files = fs.readdirSync(config.downloadPath)
