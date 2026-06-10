@@ -429,8 +429,10 @@ const showAddTaskModal = () => {
 window.showAddTaskModal = showAddTaskModal;
 
 const parseUrls = async () => {
-  const urls = $('addUrls').value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-  if (urls.length === 0) { toast('请先粘贴 URL', 'warn'); return; }
+  const raw = $('addUrls').value.trim();
+  const urlRegex = /https?:\/\/[^\s<>"']+/g;
+  const urls = raw.match(urlRegex);
+  if (!urls || urls.length === 0) { toast('未找到有效 URL', 'warn'); return; }
   const url = urls[0];
   $('addPreview').textContent = '⏳ 解析中...';
   const cookieName = $('addCookieName')?.value?.trim() || '';
@@ -454,8 +456,12 @@ const parseUrls = async () => {
 window.parseUrls = parseUrls;
 
 const submitAddTask = async () => {
-  const urls = $('addUrls').value.trim().split('\n').map(s => s.trim()).filter(Boolean);
-  if (urls.length === 0) { toast('请粘贴 URL', 'warn'); return; }
+  const raw = $('addUrls').value.trim();
+  const urlRegex = /https?:\/\/[^\s<>"']+/g;
+  const urls = raw.match(urlRegex) || [];
+  if (urls.length === 0) { toast('未找到有效 URL (http/https)', 'warn'); return; }
+  // 去重
+  const unique = [...new Set(urls)];
   const options = {};
   const fmtSelect = $('addFormat').value.trim();
   const fmtCustom = $('addFormatCustom').value.trim();
@@ -473,7 +479,7 @@ const submitAddTask = async () => {
   if (cookieName) options.cookieName = cookieName;
 
   let ok = 0, fail = 0;
-  for (const url of urls) {
+  for (const url of unique) {
     try {
       const r = await API.post('/api/tasks', { url, options });
       if (r.task) ok++;
