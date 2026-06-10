@@ -1081,7 +1081,7 @@ function showTaskDetail(id) {
   });
   setText('tdStatus', ({pending:'⏳ 等待',downloading:'⏬ 下载中',processing:'🔄 处理',completed:'✅ 已完成',error:'❌ 出错',paused:'⏸ 暂停',stopped:'⏹ 停止'})[t.status] || t.status);
   setText('tdProgress', (t.progress || 0).toFixed(1) + '%' + (t.speed ? ` · ⚡ ${formatSpeed(t.speed)}` : ''));
-  setText('tdFormat', t.format || t.ext || '-');
+  setText('tdFormat', t.formatDescription || t.format || t.ext || '-');
   setText('tdCreated', t.createdAt ? new Date(t.createdAt).toLocaleString('zh-CN') : '-');
   setText('tdCompleted', t.completedAt ? new Date(t.completedAt).toLocaleString('zh-CN') : '-');
   const errRow = $('tdErrorRow');

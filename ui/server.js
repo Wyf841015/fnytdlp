@@ -831,6 +831,10 @@ const parseAndCreateTask = async (url, options = {}) => {
   task.duration = rawInfo?.duration || 0;
   task.thumbnail = rawInfo?.thumbnail || '';
   task.downloadFolder = folderName;
+  // 缓存 formats 列表给 util 反查 formatId → 人类可读描述 ("1080p HEVC + 128k mp4a")
+  if (rawInfo?.formats && Array.isArray(rawInfo.formats)) {
+    task._infoFormats = rawInfo.formats;
+  }
   saveTasks();
   // 7. 启动下载
   startTask(task.id);
@@ -878,11 +882,15 @@ const infoUrl = (url, cookieName) => {
             formatId: f.format_id,
             ext: f.ext,
             resolution: f.resolution,
+            height: f.height,
+            width: f.width,
             fps: f.fps,
             vcodec: f.vcodec,
             acodec: f.acodec,
+            abr: f.abr,           // 平均音频码率 (kbps)
+            tbr: f.tbr,           // 总码率 (kbps)
             filesize: f.filesize || f.filesize_approx,
-            tbr: f.tbr,
+            formatNote: f.format_note, // yt-dlp 描述: "1080p", "720p", "audio only"
           })),
           subtitles: Object.keys(info.subtitles || {}),
           extractor: info.extractor,

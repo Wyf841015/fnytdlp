@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { parseLine, applyLine, newTask, parseSpeed } from '../ui/util/progress-aggregator.js';
+import { parseLine, applyLine, newTask, parseSpeed, describeFormatIds } from '../ui/util/progress-aggregator.js';
 
 // ── parseSpeed ──
 test('parseSpeed: 前导空格', () => {
@@ -140,6 +140,62 @@ test('临时 filename 不覆盖 task.filename, 只暂存到 _pendingFilenames', 
   assert.deepStrictEqual(t._pendingFilenames, ['foo.f100026.mp4', 'foo.f30280.m4a']);
   applyLine(t, '[download] Destination: foo.mp4');
   assert.strictEqual(t.filename, 'foo.mp4'); // 合并后才覆盖
+});
+
+// ── describeFormatIds: 数字 formatId 翻译成人类可读描述 ──
+test('describeFormatIds: B 站多流 "100026+30280" → 1080p HEVC + 128k', () => {
+  const formats = [
+    { formatId: '100026', ext: 'mp4', height: 1080, vcodec: 'hev1.1.6.L120.90', acodec: 'none', formatNote: '1080p' },
+    { formatId: '30280', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128 },
+  ];
+  const desc = describeFormatIds('100026+30280', formats);
+  assert.match(desc, /1080p/);
+  assert.match(desc, /HEVC/);
+  assert.match(desc, /128k/);
+  assert.match(desc, /\+/);
+});
+
+test('describeFormatIds: 单视频流 "233" → 1080p mp4', () => {
+  const formats = [
+    { formatId: '233', ext: 'mp4', height: 1080, vcodec: 'avc1.640028', acodec: 'none', formatNote: '1080p' },
+  ];
+  const desc = describeFormatIds('233', formats);
+  assert.match(desc, /1080p/);
+  assert.match(desc, /H\.264/);
+});
+
+test('describeFormatIds: 纯音频 "140" → 128k m4a', () => {
+  const formats = [
+    { formatId: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128 },
+  ];
+  const desc = describeFormatIds('140', formats);
+  assert.match(desc, /128k/);
+  assert.match(desc, /m4a/);
+});
+
+test('describeFormatIds: 找不到的 formatId 兜底显示原值', () => {
+  const formats = [
+    { formatId: '100026', ext: 'mp4', height: 1080, vcodec: 'hev1.1.6.L120.90', acodec: 'none' },
+  ];
+  const desc = describeFormatIds('100026+99999', formats);
+  assert.match(desc, /1080p/);
+  assert.match(desc, /99999/); // 兜底
+});
+
+test('describeFormatIds: formats 数组为空时返空字符串', () => {
+  assert.strictEqual(describeFormatIds('100026+30280', []), '');
+  assert.strictEqual(describeFormatIds('100026+30280', null), '');
+});
+
+test('applyLine: format 行触发 formatDescription 计算', () => {
+  const t = newTask();
+  t._infoFormats = [
+    { formatId: '100026', ext: 'mp4', height: 1080, vcodec: 'hev1.1.6.L120.90', acodec: 'none', formatNote: '1080p' },
+    { formatId: '30280', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128 },
+  ];
+  applyLine(t, '[info] BV1xxx: Downloading 1 format(s): 100026+30280');
+  assert.strictEqual(t.format, '100026+30280');
+  assert.match(t.formatDescription, /1080p.*HEVC.*\+.*128k/);
 });
 
 test('完整场景: B 站实测多流下载完整 PROGRESS 序列', () => {

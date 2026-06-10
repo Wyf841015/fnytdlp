@@ -34,6 +34,39 @@ export function parseDuration(s) {
 
 // 解析一行: 返回 {kind, ...payload} 或 null
 // kind: 'progress' | 'destination' | 'merger' | 'format'
+
+// 把 "100026+30280" 形式的 formatId 字符串反查 formats 数组, 算出人类可读描述
+// 例: "100026+30280" → "1080p HEVC · mp4 / 128k mp4a"
+//     "233"          → "video only 1080p mp4"
+//     "140"          → "audio only 128k m4a"
+export function describeFormatIds(formatStr, formats) {
+  if (!formatStr || !Array.isArray(formats) || formats.length === 0) return '';
+  const ids = String(formatStr).split('+').map(s => s.trim()).filter(Boolean);
+  const parts = [];
+  for (const id of ids) {
+    const f = formats.find(x => String(x.formatId) === id);
+    if (!f) { parts.push(id); continue; }
+    if (f.vcodec && f.vcodec !== 'none' && f.height) {
+      // 视频流: "1080p HEVC · mp4" / "720p avc · mp4"
+      const codec = f.vcodec.startsWith('hev') ? 'HEVC' :
+                    f.vcodec.startsWith('avc') ? 'H.264' :
+                    f.vcodec.startsWith('vp9') ? 'VP9' :
+                    f.vcodec.startsWith('av01') ? 'AV1' : f.vcodec;
+      const res = f.formatNote || (f.height ? `${f.height}p` : f.resolution || '');
+      parts.push(`${res} ${codec} · ${f.ext || ''}`.trim());
+    } else if (f.acodec && f.acodec !== 'none') {
+      // 音频流: "128k m4a" / "160k opus"
+      const abr = f.abr ? Math.round(f.abr) + 'k' : '';
+      const acodec = f.acodec.includes('mp4a') ? 'mp4a' : f.acodec;
+      parts.push(`${abr} ${acodec}`.trim() + (f.ext ? ` · ${f.ext}` : ''));
+    } else {
+      // 兜底
+      parts.push(`${id} ${f.ext || ''}`.trim());
+    }
+  }
+  return parts.join(' + ');
+}
+
 export function parseLine(line) {
   if (!line) return null;
   if (line.startsWith('PROGRESS|')) {
@@ -119,6 +152,10 @@ export function applyLine(task, line) {
   }
   if (ev.kind === 'format') {
     task.format = ev.value;
+    // 反查 formats 数组算人类可读描述 (格式: "1080p HEVC + 128k mp4a")
+    if (task._infoFormats && Array.isArray(task._infoFormats) && ev.value) {
+      task.formatDescription = describeFormatIds(ev.value, task._infoFormats);
+    }
     return task;
   }
   if (ev.kind === 'progress') {
