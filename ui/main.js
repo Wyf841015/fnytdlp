@@ -474,6 +474,7 @@ const parseUrls = async () => {
   const cookieName = $('addCookieName')?.value?.trim() || '';
   try {
     const info = await API.post('/api/info', { url, cookieName });
+    _lastParsedInfo = info; // 缓存解析结果, 提交时复用
     $('addPreview').innerHTML = `
       <div class="info-card">
         <img class="info-thumb" src="${esc(info.thumbnail || '')}" onerror="this.style.display='none'">
@@ -490,6 +491,7 @@ const parseUrls = async () => {
   }
 };
 window.parseUrls = parseUrls;
+let _lastParsedInfo = null; // 缓存解析结果, 提交任务时传后端省去第二次 infoUrl
 
 const submitAddTask = async () => {
   const raw = $('addUrls').value.trim();
@@ -527,7 +529,10 @@ const submitAddTask = async () => {
   let ok = 0, fail = 0;
   for (const url of unique) {
     try {
-      const r = await API.post('/api/tasks', { url, options });
+      const body = { url, options };
+      // 传入已缓存的解析结果, 后端跳过第二次 infoUrl
+      if (_lastParsedInfo?.title) body.parsedInfo = _lastParsedInfo;
+      const r = await API.post('/api/tasks', body);
       if (r.task) ok++;
       else fail++;
     } catch (e) { fail++; }

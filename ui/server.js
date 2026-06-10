@@ -644,12 +644,13 @@ const startTask = (id) => {
       task.completedAt = Date.now();
       // 兜底: 用 fs.statSync 读真实文件大小 (progress 模板里 total_bytes_estimate 可能为 0)
       if (!task.filename) {
-        // 兜底 1: 下载目录里找最新文件 (yt-dlp --print 不可用时的备选)
+        // 兜底 1: 下载目录里找最新文件 (优先用 _downloadFolder, 其次 config.downloadPath)
         try {
-          const files = fs.readdirSync(config.downloadPath)
+          const downloadDir = task.options?._downloadFolder || config.downloadPath;
+          const files = fs.readdirSync(downloadDir)
             .map(f => {
               try {
-                const fp = path.join(config.downloadPath, f);
+                const fp = path.join(downloadDir, f);
                 const st = fs.statSync(fp);
                 return { name: f, mtime: st.mtimeMs || 0, size: st.size };
               } catch (e) { return null; }
@@ -660,7 +661,8 @@ const startTask = (id) => {
         } catch (e) {}
       }
       if (task.filename) {
-        const fp = path.join(config.downloadPath, task.filename);
+        const fileDir = task.options?._downloadFolder || config.downloadPath;
+        const fp = path.join(fileDir, task.filename);
         try {
           const st = fs.statSync(fp);
           if (st.isFile() && st.size > 0) {
@@ -738,14 +740,20 @@ const retryTask = (id) => {
 
 // ── parseAndCreateTask: 先解析再建文件夹+info.txt, 然后开始下载 ──────────
 const parseAndCreateTask = async (url, options = {}) => {
-  // 1. 解析视频元数据获取标题
   let title = '';
   let rawInfo = null;
-  try {
-    rawInfo = await infoUrl(url, options.cookieName);
-    title = rawInfo?.title || '';
-  } catch (e) {
-    LOG('[parseAndCreateTask] infoUrl failed (will use URL as folder):', e.message);
+  // 如果前端已传解析结果, 直接复用, 跳过第二次 yt-dlp --dump-json
+  if (options._parsedInfo?.title) {
+    rawInfo = options._parsedInfo;
+    title = rawInfo.title || '';
+    delete options._parsedInfo; // 清理, 不存入持久化
+  } else {
+    try {
+      rawInfo = await infoUrl(url, options.cookieName);
+      title = rawInfo?.title || '';
+    } catch (e) {
+      LOG('[parseAndCreateTask] infoUrl failed (will use URL as folder):', e.message);
+    }
   }
   // 2. 生成文件夹名 (safe folder name from title)
   let folderName = sanitizeFilename(title || path.basename(url).substring(0, 64));
@@ -893,22 +901,20 @@ const handle = async (req, res) => {
       if (!url) return sendJSON(res, 400, { error: 'url is required' });
       if (!isValidUrl(url)) return sendJSON(res, 400, { error: `Invalid URL (only http/https allowed): ${url}` });
       // feat3: 使用解析→建文件夹→info.txt→下载 流程
+      // 如果前端已传 parsedInfo, 注入到 options 中让 parseAndCreateTask 跳过第二次 infoUrl
+      const opts = body.options || {};
+      if (body.parsedInfo) opts._parsedInfo = body.parsedInfo;
       try {
-        const task = await parseAndCreateTask(url, body.options || {});
+        const task = await parseAndCreateTask(url, opts);
         sendJSON(res, 200, { task });
       } catch (e) {
         // fallback: 如果 parseAndCreateTask 失败, 回退到旧流程直接创建任务
         LOG('[POST /api/tasks] parseAndCreateTask failed, fallback:', e.message);
-        const task = createTask(url, body.options || {});
+        const task = createTask(url, opts);
         startTask(task.id);
         sendJSON(res, 200, { task });
       }
-    } else if (pathname.startsWith('/api/tasks/') && req.method === 'GET') {
-      const id = pathname.split('/')[3];
-      const task = getTask(id);
-      if (!task) return sendJSON(res, 404, { error: 'not found' });
-      sendJSON(res, 200, { task });
-      // ── info_content: 读取 info.txt ──
+    // ── info_content: 读取 info.txt ──
     } else if (pathname.match(/^\/api\/tasks\/([^/]+)\/info_content$/) && req.method === 'GET') {
       const id = pathname.split('/')[3];
       const task = getTask(id);
@@ -923,6 +929,11 @@ const handle = async (req, res) => {
       } catch (e) {
         sendJSON(res, 500, { error: e.message });
       }
+    } else if (pathname.startsWith('/api/tasks/') && req.method === 'GET') {
+      const id = pathname.split('/')[3];
+      const task = getTask(id);
+      if (!task) return sendJSON(res, 404, { error: 'not found' });
+      sendJSON(res, 200, { task });
     } else if (pathname.startsWith('/api/tasks/') && pathname.endsWith('/start') && req.method === 'POST') {
       const id = pathname.split('/')[3];
       const task = getTask(id);
