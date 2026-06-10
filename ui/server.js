@@ -360,7 +360,7 @@ const listTasks = (filter = {}) => {
               return { name: f, mtime: st.mtimeMs || 0, size: st.size };
             } catch (e) { return null; }
           })
-          .filter(x => x && x.size > 0 && !x.name.endsWith('.part') && !x.name.endsWith('.ytdl') && !x.name.startsWith('.'))
+          .filter(x => x && x.size > 0 && !x.name.endsWith('.part') && !x.name.endsWith('.ytdl') && !x.name.startsWith('.') && !/\.(webp|jpe?g|png|gif|info\.json)$/i.test(x.name))
           .sort((a, b) => b.mtime - a.mtime);
         if (files.length > 0) {
           t.filename = files[0].name;

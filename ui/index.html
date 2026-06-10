@@ -565,6 +565,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="hideModal('taskDetailModal')">关闭</button>
+      <button class="btn btn-danger" onclick="try{deleteTask(_currentDetailTaskId);hideModal('taskDetailModal')}catch(e){console.error(e)}">🗑 删除</button>
     </div>
   </div>
 </div>

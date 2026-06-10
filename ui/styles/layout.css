@@ -1143,6 +1143,7 @@ html[data-theme='light'] .task-item.selected {
 .footer {
   text-align: center;
   padding: 16px;
+  padding-bottom: 32px;
   color: var(--text-secondary);
   font-size: 0.8rem;
   line-height: 1.6;

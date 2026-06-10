@@ -86,6 +86,7 @@ let currentFilter = 'all';
 // M-7: 批量选中状态
 const _batchSelected = new Set();
 let deleteTargetId = null;
+let _currentDetailTaskId = null;
 
 // ── Sparkline instances ────────────────────────────────────────────
 let sparkActive, sparkSpeed, sparkCompleted, sparkTotal;
@@ -963,6 +964,7 @@ window.showImgFull = showImgFull;
 
 // ── Task Detail Modal ──────────────────────────────────────────────
 function showTaskDetail(id) {
+  _currentDetailTaskId = id;
   const t = tasks.find(x => x.id === id);
   if (!t) return;
   const setText = (eid, v) => { const el = $(eid); if (el) el.textContent = v; };
