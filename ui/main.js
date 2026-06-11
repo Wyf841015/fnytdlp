@@ -16,10 +16,20 @@ const API = {
     // 例: '/app/fnytdlp' + '/api/tasks' = '/app/fnytdlp/api/tasks'
     return GATEWAY_BASE + (path.startsWith('/') ? path : '/' + path);
   },
+  async _fetch(url, options, timeoutMs = 30000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { ...options, signal: controller.signal });
+      return r;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
   async get(path) {
     const url = this._url(path);
     try {
-      const r = await fetch(url, { credentials: 'same-origin' });
+      const r = await this._fetch(url, { credentials: 'same-origin' });
       if (!r.ok) {
         let errMsg = 'HTTP ' + r.status;
         try { const j = await r.json(); if (j && j.error) errMsg = j.error; } catch (e) {}
@@ -35,7 +45,7 @@ const API = {
   async post(path, body) {
     const url = this._url(path);
     try {
-      const r = await fetch(url, {
+      const r = await this._fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
@@ -55,28 +65,38 @@ const API = {
   },
   async put(path, body) {
     const url = this._url(path);
-    const r = await fetch(url, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify(body || {}),
-    });
-    if (!r.ok) {
-      let errMsg = 'HTTP ' + r.status;
-      try { const j = await r.json(); if (j && j.error) errMsg = j.error; } catch (e) {}
-      throw new Error(errMsg);
+    try {
+      const r = await this._fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body || {}),
+      });
+      if (!r.ok) {
+        let errMsg = 'HTTP ' + r.status;
+        try { const j = await r.json(); if (j && j.error) errMsg = j.error; } catch (e) {}
+        throw new Error(errMsg);
+      }
+      return r.json();
+    } catch (e) {
+      console.error('[API.put] failed', url, e);
+      throw e;
     }
-    return r.json();
   },
   async del(path) {
     const url = this._url(path);
-    const r = await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
-    if (!r.ok) {
-      let errMsg = 'HTTP ' + r.status;
-      try { const j = await r.json(); if (j && j.error) errMsg = j.error; } catch (e) {}
-      throw new Error(errMsg);
+    try {
+      const r = await this._fetch(url, { method: 'DELETE', credentials: 'same-origin' });
+      if (!r.ok) {
+        let errMsg = 'HTTP ' + r.status;
+        try { const j = await r.json(); if (j && j.error) errMsg = j.error; } catch (e) {}
+        throw new Error(errMsg);
+      }
+      return r.json();
+    } catch (e) {
+      console.error('[API.del] failed', url, e);
+      throw e;
     }
-    return r.json();
   },
 };
 
@@ -172,9 +192,19 @@ const showConfirm = (title, message) => {
   return new Promise(resolve => {
     _confirmResolve = (val) => {
       _confirmResolve = null;
+      // P2-6: 确认后立即禁用按钮, 防止多次点击
+      const btnConfirm = $('confirmModal')?.querySelector('.btn-danger');
+      const btnCancel = $('confirmModal')?.querySelector('.btn-ghost');
+      if (btnConfirm) btnConfirm.disabled = true;
+      if (btnCancel) btnCancel.disabled = true;
       hideModal('confirmModal');
       resolve(val);
     };
+    // P2-6: 打开时恢复按钮状态
+    const btnConfirm = $('confirmModal')?.querySelector('.btn-danger');
+    const btnCancel = $('confirmModal')?.querySelector('.btn-ghost');
+    if (btnConfirm) btnConfirm.disabled = false;
+    if (btnCancel) btnCancel.disabled = false;
     $('confirmTitle').textContent = title;
     $('confirmMessage').textContent = message;
     showModal('confirmModal');
@@ -1142,6 +1172,8 @@ function showTaskDetail(id) {
   showModal('taskDetailModal');
 }
 window.showTaskDetail = showTaskDetail;
+window._currentDetailTaskId = _currentDetailTaskId;
+window._confirmResolve = _confirmResolve;
 
 // ── Tabs ──────────────────────────────────────────────────────────
 const switchTab = (tab) => {

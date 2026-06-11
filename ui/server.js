@@ -203,9 +203,14 @@ const loadConfig = () => {
     }
   } catch (e) { LOG('config load failed:', e.message); }
 };
+const _atomicWrite = (filePath, data) => {
+  const tmp = filePath + '.tmp.' + crypto.randomUUID().slice(0, 8);
+  fs.writeFileSync(tmp, data, { mode: 0o644 });
+  fs.renameSync(tmp, filePath);
+};
 const saveConfig = () => {
   try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    _atomicWrite(CONFIG_FILE, JSON.stringify(config, null, 2));
   } catch (e) { LOG('config save failed:', e.message); }
 };
 loadConfig();
@@ -231,7 +236,7 @@ const loadTasks = () => {
 };
 const saveTasks = () => {
   try {
-    fs.writeFileSync(TASKS_FILE, JSON.stringify(Array.from(tasks.values()), null, 2));
+    _atomicWrite(TASKS_FILE, JSON.stringify(Array.from(tasks.values()), null, 2));
   } catch (e) { LOG('tasks save failed:', e.message); }
 };
 loadTasks();
@@ -268,7 +273,7 @@ const _procs = new Map();   // taskId -> ChildProcess
 // ── URL validation ────────────────────────────────────────────────────
 // ── Cookies 多网站管理 ─────────────────────────────────────────────
 const safeName = (s) => String(s).toLowerCase().replace(/[^a-z0-9_-]/g, '_').substring(0, 64);
-const ensureCookiesDir = () => { try { fs.mkdirSync(COOKIES_DIR, { recursive: true }); } catch (e) {} };
+const ensureCookiesDir = () => { try { fs.mkdirSync(COOKIES_DIR, { recursive: true }); } catch (e) { LOG('ensureCookiesDir failed:', e.message); } };
 const getCookieFile = (name) => path.join(COOKIES_DIR, safeName(name) + '.txt');
 const listCookies = () => (config.cookies || []).map(c => ({ name: c.name, domain: c.domain || '' }));
 const addCookie = (name, domain, content) => {
@@ -306,12 +311,20 @@ const isValidUrl = (url) => {
   } catch (e) { return false; }
 };
 
-// ── path whitelist (下载路径必须在 config.downloadPath 下) ──────────
+// ── path whitelist (下载路径必须在合理的系统路径下) ──────────
+const _SYSTEM_BLOCKED = ['/etc', '/proc', '/sys', '/dev', '/boot', '/lost+found', '/root', '/var/run', '/var/log', '/var/cache', '/snap', '/lib', '/lib64', '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/lib64', '/opt'];
+const isSystemPath = (p) => {
+  const resolved = path.resolve(p);
+  for (const b of _SYSTEM_BLOCKED) {
+    if (resolved === b || resolved.startsWith(b + '/') || resolved.startsWith(b + path.sep)) return true;
+  }
+  return false;
+};
 const isSafeDownloadPath = (target) => {
   if (!target) return false;
   const resolved = path.resolve(target);
   const allowed = path.resolve(config.downloadPath);
-  return resolved.startsWith(allowed);
+  return resolved.startsWith(allowed) && !isSystemPath(resolved);
 };
 
 // ── create task ───────────────────────────────────────────────────────
@@ -379,7 +392,7 @@ const listTasks = (filter = {}) => {
           t.totalBytes = files[0].size;
           t.downloadedBytes = files[0].size;
         }
-      } catch (e) {}
+      } catch (e) { LOG('[listTasks] filename stat failed:', e.message); }
     } else if (t.status === 'completed' && (!t.totalBytes || t.totalBytes === 0) && t.filename) {
       try {
         const fp = path.join(config.downloadPath, t.filename);
@@ -388,7 +401,7 @@ const listTasks = (filter = {}) => {
           t.totalBytes = st.size;
           t.downloadedBytes = st.size;
         }
-      } catch (e) {}
+      } catch (e) { LOG('[listTasks] totalBytes stat failed:', e.message); }
     }
   }
   if (filter.status) arr = arr.filter(t => filter.status.includes(t.status));
@@ -606,6 +619,7 @@ const startTask = (id) => {
   const proc = spawn(YT_DLP_BIN, args, {
     cwd: TARGET_DIR,
     env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' },
+    timeout: 86400000, // 24h 超时兜底
   });
   _procs.set(id, proc);
   let stderrBuf = '';
@@ -673,7 +687,7 @@ const startTask = (id) => {
           files.sort((a, b) => b.mtime - a.mtime);
           task.filename = files[0].name;
         }
-      } catch (e) {}
+      } catch (e) { LOG('[yt-dlp close] readdir failed:', e.message); }
       if (task.filename) {
         const fileDir = task.options?._downloadFolder || config.downloadPath;
         const fp = path.join(fileDir, task.filename);
@@ -683,7 +697,7 @@ const startTask = (id) => {
             task.totalBytes = st.size;
             task.downloadedBytes = st.size;
           }
-        } catch (e) {}
+        } catch (e) { LOG('[yt-dlp close] statSync failed:', e.message); }
       }
       // 异步获取元数据 (title/duration/thumbnail)
       if (!task.title) {
@@ -701,7 +715,7 @@ const startTask = (id) => {
             task.updatedAt = Date.now();
             saveTasks();
             broadcast('task-updated', task);
-          } catch (e) {}
+          } catch (e) { LOG('[meta] dump-json parse failed:', e.message); }
         });
       } else {
         saveTasks();
@@ -1011,12 +1025,9 @@ const handle = async (req, res) => {
       const browsePath = u.searchParams.get('path') || config.downloadPath || DATA_DIR;
       try {
         const resolved = path.resolve(browsePath);
-        // P0: 禁止浏览系统敏感目录
-        const blocked = ['/etc', '/proc', '/sys', '/dev', '/boot', '/lost+found'];
-        for (const b of blocked) {
-          if (resolved === b || resolved.startsWith(b + '/')) {
-            return sendJSON(res, 403, { error: '禁止浏览系统目录' });
-          }
+        // P2-4: 使用 isSystemPath 禁止浏览系统敏感目录
+        if (isSystemPath(resolved)) {
+          return sendJSON(res, 403, { error: '禁止浏览系统目录' });
         }
         if (!fs.existsSync(resolved)) {
           return sendJSON(res, 404, { error: '路径不存在', path: resolved });
@@ -1033,7 +1044,7 @@ const handle = async (req, res) => {
             const full = path.join(resolved, name);
             const s = fs.statSync(full);
             if (s.isDirectory()) dirs.push({ name, path: full });
-          } catch {}
+          } catch (e) { LOG('[browse] stat readdir entry failed:', e.message); }
         }
         dirs.sort((a, b) => a.name.localeCompare(b.name, 'zh'));
         sendJSON(res, 200, {
@@ -1064,11 +1075,11 @@ const handle = async (req, res) => {
     } else if (pathname === '/api/config' && req.method === 'POST') {
       const body = await parseBody(req);
       const newCfg = { ...config, ...body };
-      // P1-4: 允许用户自由更改下载路径（不限制在旧路径下）
+      // P2-2: 使用 isSystemPath 防止下载路径设为系统目录
       if (newCfg.downloadPath) {
         const resolved = path.resolve(newCfg.downloadPath);
-        if (!resolved || resolved === '/') {
-          return sendJSON(res, 400, { error: 'Invalid downloadPath' });
+        if (!resolved || resolved === '/' || isSystemPath(resolved)) {
+          return sendJSON(res, 400, { error: 'Invalid downloadPath: cannot be a system directory' });
         }
       }
       config = newCfg;
@@ -1169,6 +1180,16 @@ const serveStatic = (reqPath, res) => {
 };
 
 // ── main ──────────────────────────────────────────────────────────────
+// P1-4: 全局异常处理 — 防止 unhandled rejection / uncaught exception 静默崩溃
+process.on('unhandledRejection', (reason) => {
+  LOG('[FATAL] unhandledRejection:', reason instanceof Error ? reason.message : String(reason));
+});
+process.on('uncaughtException', (err) => {
+  LOG('[FATAL] uncaughtException:', err.message);
+  // 打印完整堆栈后正常退出, 由 fnOS 框架重启
+  console.error('[fnytdlp] FATAL uncaughtException:', err.stack);
+  process.exit(1);
+});
 const main = () => {
   // HTTP 端口 (本地调试 + fnOS 框架)
   const httpServer = http.createServer((req, res) => {
