@@ -137,7 +137,7 @@ const formatDuration = (secs) => {
 };
 
 // ── toast ──────────────────────────────────────────────────────────
-const toast = (msg, type = 'info') => {
+const toast = (msg, type = 'info', duration = 2400) => {
   const c = $('toastContainer');
   if (!c) return;
   const el = document.createElement('div');
@@ -148,8 +148,8 @@ const toast = (msg, type = 'info') => {
   el.innerHTML = `<span class="toast-icon">${icons[cssType] || 'i'}</span><span class="toast-msg">${esc(msg)}</span>`;
   c.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
-  setTimeout(() => el.classList.remove('show'), 2400);
-  setTimeout(() => el.remove(), 3000);
+  setTimeout(() => el.classList.remove('show'), duration);
+  setTimeout(() => el.remove(), duration + 600);
 };
 
 // ── modal helpers ──────────────────────────────────────────────────
@@ -237,6 +237,55 @@ document.addEventListener('DOMContentLoaded', () => {
   const cy = document.getElementById('copyright-year');
   if (cy) cy.textContent = new Date().getFullYear();
 });
+
+// ── 键盘快捷键 ──────────────────────────────────────────
+const SHORTCUTS = {
+  'n': { label: '新建任务', action: () => showAddTaskModal() },
+  's': { label: '搜索', action: () => { const i = $('searchInput'); if(i) { i.focus(); i.select(); } } },
+  'r': { label: '刷新', action: () => loadTasks() },
+  '?': { label: '快捷键帮助', action: () => showShortcutsHelp() },
+  'Escape': { label: '关闭弹窗', action: () => {
+      // 关闭最顶层的 modal
+      const openModals = document.querySelectorAll('.modal-overlay.active');
+      if (openModals.length > 0) {
+        const last = openModals[openModals.length - 1];
+        if (last.id) hideModal(last.id);
+        return;
+      }
+      // 搜索框失焦
+      const si = $('searchInput');
+      if (si && document.activeElement === si) si.blur();
+  }},
+};
+document.addEventListener('keydown', (e) => {
+  // 不在 input/textarea/select 中触发单字符快捷键
+  const tag = (e.target || {}).tagName || '';
+  const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+  // Escape 永远有效
+  if (e.key === 'Escape') { SHORTCUTS['Escape'].action(); return; }
+  // 数字键 1-4 切换 tab (非输入状态)
+  if (!isInput && e.key >= '1' && e.key <= '4') {
+    e.preventDefault();
+    const filters = ['all', 'downloading', 'completed', 'error'];
+    const idx = parseInt(e.key) - 1;
+    if (idx < filters.length) {
+      const tabs = document.querySelectorAll('.tab');
+      if (tabs[idx]) switchTab(tabs[idx]);
+    }
+    return;
+  }
+  // 单字符快捷键 (非输入状态)
+  if (!isInput && SHORTCUTS[e.key]) {
+    e.preventDefault();
+    SHORTCUTS[e.key].action();
+  }
+});
+
+const showShortcutsHelp = () => {
+  toast('⌨ N 新建 · S 搜索 · R 刷新 · 1-4 筛选 · Esc 关闭', 'info', 4000);
+};
+window.showShortcutsHelp = showShortcutsHelp;
+
 
 // ── 时钟 ──────────────────────────────────────────────────────────
 const updateClock = () => {

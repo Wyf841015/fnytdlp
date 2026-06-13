@@ -23,7 +23,7 @@
 
 .header-bar {
   height: 3px;
-  background: linear-gradient(90deg, hsl(152, 58%, 53%), hsl(190, 70%, 50%) 30%, hsl(220, 70%, 60%) 60%, hsl(280, 60%, 60%));
+  background: linear-gradient(90deg, hsl(0, 73%, 50%), hsl(340, 70%, 50%) 30%, hsl(320, 60%, 50%) 60%, hsl(0, 70%, 40%));
   position: relative;
   overflow: hidden;
 }
@@ -68,7 +68,7 @@
 .header-logo {
   width: 32px;
   height: 32px;
-  background: linear-gradient(135deg, hsl(152, 58%, 53%), hsl(152, 70%, 40%));
+  background: linear-gradient(135deg, hsl(0, 73%, 50%), hsl(0, 80%, 35%));
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -76,7 +76,7 @@
   color: white;
   font-size: 0.82rem;
   font-weight: 900;
-  box-shadow: 0 0 12px hsl(152, 58%, 53% / 0.3);
+  box-shadow: 0 0 12px hsl(0, 73%, 50% / 0.4);
   flex-shrink: 0;
 }
 
@@ -559,6 +559,12 @@
   min-width: 0;
   content-visibility: auto;
   contain-intrinsic-size: 80px;
+  animation: taskItemIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes taskItemIn {
+  0% { opacity: 0; transform: translateY(8px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .task-item:hover {
@@ -1204,7 +1210,7 @@ html[data-theme='light'] .task-item.selected {
   font-size: 0.8rem;
   line-height: 1.6;
 }
-.footer p { margin-bottom: 0; }
+.footer p { margin-bottom: 0; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px; }
 .footer a.footer-link {
   color: var(--accent);
   text-decoration: none;
@@ -1214,6 +1220,39 @@ html[data-theme='light'] .task-item.selected {
   color: var(--accent-hover, var(--accent));
   text-decoration: underline;
   text-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* Keyboard shortcut hint */
+.kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--t-fast);
+  letter-spacing: 0.02em;
+  margin-left: 6px;
+}
+.kbd-hint:hover {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-muted);
+}
+
+/* Button press micro-interaction */
+.btn:active:not(:disabled):not(.btn-loading) {
+  transform: scale(0.97);
+  transition-duration: 0.05s;
+}
+.toolbar-btn:active:not(:disabled) {
+  transform: scale(0.96);
+  transition-duration: 0.05s;
 }
 
 /* ===== Responsive — Tablet & Below ===== */
