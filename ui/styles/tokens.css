@@ -4,48 +4,47 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 :root, html[data-theme='dark'] {
-  /* Brand — Supabase green */
-  /* YouTube 红色系 — 适合 yt-dlp 视频下载工具 */
-  --brand-h: 0;
-  --brand-s: 73%;
+  /* Brand — Warm Amber/Orange (非 AI 色) */
+  --brand-h: 30;
+  --brand-s: 75%;
   --brand-l: 50%;
 
   /* Derived accent colors */
   --accent: hsl(var(--brand-h), var(--brand-s), var(--brand-l));
   --accent-hover: hsl(var(--brand-h), var(--brand-s), calc(var(--brand-l) - 8%));
-  --accent-muted: hsl(var(--brand-h), 35%, 20% / 0.5);
-  --accent-glow: hsl(var(--brand-h), var(--brand-s), var(--brand-l) / 0.2);
-  --accent-border: hsl(var(--brand-h), 40%, 35% / 0.5);
+  --accent-muted: hsl(30, 35%, 22% / 0.45);
+  --accent-glow: hsl(30, 75%, 50% / 0.15);
+  --accent-border: hsl(30, 35%, 38% / 0.5);
 
-  /* Aliases (兼容 components.css/layout.css 旧引用, 11 处用到) */
+  /* Aliases (兼容 components.css/layout.css 旧引用) */
   --color-primary: hsl(var(--brand-h), var(--brand-s), var(--brand-l));
   --color-danger: hsl(0, 84%, 60%);
-  --text-secondary: hsl(220, 10%, 62%);
+  --text-secondary: hsl(220, 5%, 58%);
   --text-danger: hsl(0, 84%, 65%);
-  --text-subtle: hsl(220, 8%, 45%);
+  --text-subtle: hsl(220, 4%, 42%);
   --radius-md: 12px;
 
-  /* Backgrounds */
-  --bg-deepest: hsl(230, 20%, 7%);
-  --bg: hsl(230, 18%, 9%);
-  --bg-elevated: hsl(230, 16%, 13%);
-  --bg-hover: hsl(230, 14%, 17%);
-  --bg-glass: hsl(230, 18%, 9% / 0.7);
-  --bg-overlay: hsl(230, 14%, 16% / 0.6);
-  --bg-input: hsl(230, 14%, 14%);
+  /* Backgrounds — 锡灰中性色调，低饱和度 */
+  --bg-deepest: hsl(220, 4%, 7%);
+  --bg: hsl(220, 4%, 10%);
+  --bg-elevated: hsl(220, 4%, 14%);
+  --bg-hover: hsl(220, 4%, 18%);
+  --bg-glass: hsl(220, 4%, 10% / 0.75);
+  --bg-overlay: hsl(220, 4%, 15% / 0.5);
+  --bg-input: hsl(220, 4%, 13%);
 
   /* Borders */
-  --border-subtle: hsl(230, 10%, 20%);
-  --border: hsl(230, 10%, 25%);
-  --border-prominent: hsl(230, 10%, 35%);
+  --border-subtle: hsl(220, 4%, 20%);
+  --border: hsl(220, 4%, 25%);
+  --border-prominent: hsl(220, 4%, 34%);
 
   /* Text */
-  --text: hsl(220, 15%, 94%);
-  --text-muted: hsl(220, 10%, 62%);
-  --text-dim: hsl(220, 8%, 45%);
-  --text-inverse: hsl(230, 20%, 7%);
+  --text: hsl(220, 6%, 93%);
+  --text-muted: hsl(220, 4%, 58%);
+  --text-dim: hsl(220, 4%, 42%);
+  --text-inverse: hsl(220, 4%, 7%);
 
-  /* Status colors */
+  /* Status colors (保留不变) */
   --danger: hsl(0, 84%, 60%);
   --danger-hover: hsl(0, 72%, 51%);
   --danger-muted: hsl(0, 50%, 30% / 0.3);
@@ -62,7 +61,7 @@
   --shadow: 0 4px 12px hsl(0, 0%, 0% / 0.5);
   --shadow-md: 0 8px 24px hsl(0, 0%, 0% / 0.6);
   --shadow-lg: 0 16px 48px hsl(0, 0%, 0% / 0.7);
-  --shadow-accent: 0 4px 20px hsl(var(--brand-h), var(--brand-s), var(--brand-l) / 0.25);
+  --shadow-accent: 0 4px 20px hsl(30, 75%, 50% / 0.2);
 
   /* Border radii */
   --radius-xs: 4px;
@@ -91,33 +90,33 @@
 
 /* ===== Light Theme ===== */
 html[data-theme='light'] {
-  --bg-deepest: hsl(220, 20%, 96%);
-  --bg: hsl(220, 15%, 98%);
+  --bg-deepest: hsl(220, 3%, 93%);
+  --bg: hsl(220, 2%, 97%);
   --bg-elevated: hsl(0, 0%, 100%);
-  --bg-hover: hsl(220, 10%, 94%);
-  --bg-glass: hsl(0, 0%, 100% / 0.7);
-  --bg-overlay: hsl(220, 10%, 90% / 0.4);
-  --bg-input: hsl(220, 15%, 94%);
+  --bg-hover: hsl(220, 3%, 92%);
+  --bg-glass: hsl(0, 0%, 100% / 0.75);
+  --bg-overlay: hsl(220, 3%, 88% / 0.4);
+  --bg-input: hsl(220, 3%, 94%);
 
-  --border-subtle: hsl(220, 10%, 88%);
-  --border: hsl(220, 10%, 82%);
-  --border-prominent: hsl(220, 10%, 72%);
+  --border-subtle: hsl(220, 3%, 88%);
+  --border: hsl(220, 3%, 82%);
+  --border-prominent: hsl(220, 3%, 72%);
 
-  --text: hsl(220, 20%, 15%);
-  --text-muted: hsl(220, 10%, 50%);
-  --text-dim: hsl(220, 8%, 60%);
+  --text: hsl(220, 8%, 15%);
+  --text-muted: hsl(220, 4%, 48%);
+  --text-dim: hsl(220, 3%, 60%);
   --text-inverse: hsl(0, 0%, 100%);
 
-  --shadow-xs: 0 1px 2px hsl(220, 10%, 60% / 0.15);
-  --shadow-sm: 0 2px 6px hsl(220, 10%, 50% / 0.12);
-  --shadow: 0 4px 12px hsl(220, 10%, 40% / 0.1);
-  --shadow-md: 0 8px 24px hsl(220, 10%, 30% / 0.08);
-  --shadow-lg: 0 16px 48px hsl(220, 10%, 20% / 0.06);
-  --shadow-accent: 0 4px 20px hsl(var(--brand-h), var(--brand-s), var(--brand-l) / 0.15);
+  --shadow-xs: 0 1px 2px hsl(220, 4%, 50% / 0.12);
+  --shadow-sm: 0 2px 6px hsl(220, 4%, 45% / 0.1);
+  --shadow: 0 4px 12px hsl(220, 4%, 40% / 0.08);
+  --shadow-md: 0 8px 24px hsl(220, 4%, 35% / 0.06);
+  --shadow-lg: 0 16px 48px hsl(220, 4%, 30% / 0.04);
+  --shadow-accent: 0 4px 20px hsl(30, 75%, 50% / 0.12);
 
-  --accent-muted: hsl(var(--brand-h), 40%, 70% / 0.25);
-  --accent-glow: hsl(var(--brand-h), var(--brand-s), var(--brand-l) / 0.12);
-  --accent-border: hsl(var(--brand-h), 50%, 45%);
+  --accent-muted: hsl(30, 40%, 70% / 0.2);
+  --accent-glow: hsl(30, 75%, 50% / 0.1);
+  --accent-border: hsl(30, 50%, 45%);
 }
 
 /* ===== Smooth Scrollbar ===== */

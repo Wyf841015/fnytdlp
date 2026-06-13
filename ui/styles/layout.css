@@ -23,7 +23,7 @@
 
 .header-bar {
   height: 3px;
-  background: linear-gradient(90deg, hsl(0, 73%, 50%), hsl(340, 70%, 50%) 30%, hsl(320, 60%, 50%) 60%, hsl(0, 70%, 40%));
+  background: linear-gradient(90deg, hsl(30, 75%, 50%), hsl(25, 80%, 45%) 30%, hsl(35, 70%, 48%) 60%, hsl(30, 75%, 55%));
   position: relative;
   overflow: hidden;
 }
@@ -68,7 +68,7 @@
 .header-logo {
   width: 32px;
   height: 32px;
-  background: linear-gradient(135deg, hsl(0, 73%, 50%), hsl(0, 80%, 35%));
+  background: linear-gradient(135deg, hsl(30, 75%, 50%), hsl(30, 80%, 35%));
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -76,7 +76,7 @@
   color: white;
   font-size: 0.82rem;
   font-weight: 900;
-  box-shadow: 0 0 12px hsl(0, 73%, 50% / 0.4);
+  box-shadow: 0 0 12px hsl(30, 75%, 50% / 0.4);
   flex-shrink: 0;
 }
 
