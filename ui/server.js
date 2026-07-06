@@ -155,7 +155,86 @@ const detectArch = () => {
 const ARCH = detectArch();
 LOG('detected arch=' + ARCH + ' (process.arch=' + process.arch + ')');
 
-// ── default config ────────────────────────────────────────────────────
+// ── 订阅检查 ─────────────────────────────────────────────────
+const _subCheckRunning = { current: false };
+const checkSubscriptions = async () => {
+  if (_subCheckRunning.current) { LOG('[sub] check already running, skip'); return []; }
+  _subCheckRunning.current = true;
+  const subs = config.subscriptions || [];
+  const results = [];
+  try {
+    for (const sub of subs) {
+      if (!sub.enabled) continue;
+      const lastCheck = sub._lastCheck || 0;
+      if (Date.now() - lastCheck < (sub.interval || 3600) * 1000) continue;
+      LOG('[sub] checking:', sub.name, sub.url);
+      try {
+        const newIds = await getLatestIds(sub.url, sub.cookieName, sub.lastId);
+        if (newIds.length > 0) {
+          LOG('[sub] found', newIds.length, 'new items for', sub.name);
+          sub.lastId = newIds[0].id;
+          for (const item of newIds) {
+            try {
+              const opts = {};
+              if (sub.cookieName) opts.cookieName = sub.cookieName;
+              if (sub.format) opts.format = sub.format;
+              const task = await parseAndCreateTask(item.url || sub.url, opts);
+              results.push({ name: sub.name, title: item.title || item.id, taskId: task.id });
+            } catch (e) {
+              LOG('[sub] createTask failed for', item.id, e.message);
+            }
+          }
+        }
+        sub._lastCheck = Date.now();
+      } catch (e) {
+        LOG('[sub] check failed for', sub.name, e.message);
+      }
+    }
+    saveConfig();
+  } finally {
+    _subCheckRunning.current = false;
+  }
+  return results;
+};
+
+const getLatestIds = (url, cookieName, lastId) => {
+  return new Promise((resolve, reject) => {
+    const args = ['--flat-playlist', '--dump-json', '--no-warnings', '--playlist-reverse'];
+    if (cookieName && config.cookies && config.cookies.some(c => c.name === cookieName)) {
+      const fp = getCookieFile(cookieName);
+      if (fs.existsSync(fp)) args.push('--cookies', fp);
+    }
+    args.push(url);
+    const proc = spawn(YT_DLP_BIN, args, {
+      env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' },
+      timeout: 30000,
+    });
+    let out = '', err = '';
+    proc.stdout.on('data', c => out += c);
+    proc.stderr.on('data', c => err += c);
+    const timer = setTimeout(() => {
+      try { proc.kill('SIGTERM'); } catch (e) {}
+      reject(new Error('timeout'));
+    }, 30000);
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(err.trim() || `exit ${code}`));
+      const lines = out.trim().split('\n').filter(Boolean).reverse();
+      const newItems = [];
+      let foundOld = false;
+      for (const line of lines) {
+        try {
+          const e = JSON.parse(line);
+          if (foundOld || e._type === 'playlist') continue;
+          if (lastId && e.id === lastId) { foundOld = true; continue; }
+          newItems.push({ id: e.id, title: e.title, url: e.url || e.webpage_url || '' });
+        } catch (e) { /* skip */ }
+      }
+      resolve(newItems);
+    });
+    proc.on('error', reject);
+  });
+};
 const DEFAULT_CONFIG = {
   downloadPath: path.join(DATA_DIR, 'downloads'),
   concurrentDownloads: 3,         // 同时下载任务数
@@ -192,6 +271,8 @@ const DEFAULT_CONFIG = {
   maxDownloads: 0,                 // --max-downloads 0=不限
   convertSubs: '',                 // --convert-subs 例 'srt' 'vtt' (空=不转换)
   audioMultistreams: false,        // --audio-multistreams 多音轨合并
+  // 频道订阅
+  subscriptions: [],               // [{url, name, lastId, interval, cookieName, format, enabled}]
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -1325,6 +1406,36 @@ const handle = async (req, res) => {
       saveConfig();
       sendJSON(res, 200, { ok: true, config });
     }
+    // ── 订阅管理 ──
+    else if (pathname === '/api/subscriptions' && req.method === 'GET') {
+      sendJSON(res, 200, { subscriptions: config.subscriptions || [] });
+    }
+    else if (pathname === '/api/subscriptions' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const { url, name, cookieName, format, interval } = body;
+      if (!url || !name) return sendJSON(res, 400, { error: 'url and name are required' });
+      const subs = config.subscriptions || [];
+      // 去重: 同名或同URL覆盖
+      const idx = subs.findIndex(s => s.name === name || s.url === url);
+      const entry = { url, name, cookieName: cookieName || '', format: format || '', interval: parseInt(interval) || 3600, lastId: '', enabled: true, addedAt: Date.now() };
+      if (idx >= 0) { subs[idx] = { ...subs[idx], ...entry }; }
+      else { subs.push(entry); }
+      config.subscriptions = subs;
+      saveConfig();
+      LOG('[sub] added subscription:', name, url);
+      sendJSON(res, 200, { ok: true, subscriptions: config.subscriptions });
+    }
+    else if (pathname.startsWith('/api/subscriptions/') && req.method === 'DELETE') {
+      const name = decodeURIComponent(pathname.substring('/api/subscriptions/'.length));
+      config.subscriptions = (config.subscriptions || []).filter(s => s.name !== name);
+      saveConfig();
+      sendJSON(res, 200, { ok: true, subscriptions: config.subscriptions });
+    }
+    else if (pathname === '/api/subscriptions/check' && req.method === 'POST') {
+      // 手动触发一次订阅检查, 返回新内容数量
+      const results = await checkSubscriptions();
+      sendJSON(res, 200, { ok: true, results });
+    }
     // ── cookies (多网站管理) ──
     else if (pathname === '/api/cookies' && req.method === 'GET') {
       sendJSON(res, 200, { cookies: listCookies() });
@@ -1466,8 +1577,17 @@ const main = () => {
     saveTasks();
     process.exit(0);
   };
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', () => { clearInterval(_subTimer); shutdown(); });
+  process.on('SIGINT', () => { clearInterval(_subTimer); shutdown(); });
+  // 订阅定时检查 (每 5 分钟)
+  const _subTimer = setInterval(() => {
+    checkSubscriptions().then(results => {
+      if (results.length > 0) {
+        LOG('[sub] auto-check found', results.length, 'new items');
+        broadcast('task-created', { count: results.length, subscriptions: results });
+      }
+    }).catch(e => LOG('[sub] auto-check error:', e.message));
+  }, 300000); // 5 分钟
   // yt-dlp 健康检查
   try {
     const testProc = spawn(YT_DLP_BIN, ['--version'], { timeout: 5000, env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' } });

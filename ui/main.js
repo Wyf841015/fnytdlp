@@ -1310,6 +1310,127 @@ const deleteCookie = async (name) => {
 };
 window.deleteCookie = deleteCookie;
 
+// ── 订阅管理 ──────────────────────────────────────────────────
+let _subscriptions = [];
+
+const showSubscriptionModal = async () => {
+  showModal('subModal');
+  $('subName').value = '';
+  $('subUrl').value = '';
+  $('subFormat').value = '';
+  $('subCheckResult').textContent = '';
+  // 加载 Cookie 列表到选择框
+  const cookieSel = $('subCookieName');
+  if (cookieSel) {
+    try {
+      const r = await API.get('/api/cookies');
+      const cookies = (r && r.cookies) || [];
+      cookieSel.innerHTML = '<option value="">无</option>' +
+        cookies.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+    } catch (e) {
+      cookieSel.innerHTML = '<option value="">无</option>';
+    }
+  }
+  await loadSubscriptions();
+};
+window.showSubscriptionModal = showSubscriptionModal;
+
+const loadSubscriptions = async () => {
+  const list = $('subList');
+  if (!list) return;
+  try {
+    const r = await API.get('/api/subscriptions');
+    _subscriptions = (r && r.subscriptions) || [];
+    if (_subscriptions.length === 0) {
+      list.innerHTML = '<div class="form-hint" style="padding:12px;text-align:center">暂无订阅, 在上方添加</div>';
+      return;
+    }
+    list.innerHTML = _subscriptions.map(s => `
+      <div class="cookie-chip sub-chip">
+        <span class="sub-status ${s.enabled ? 'active' : ''}">${s.enabled ? '🔔' : '🔕'}</span>
+        <strong>${esc(s.name)}</strong>
+        <span class="chip-domain">${esc(s.url.substring(0, 50))}${s.url.length > 50 ? '…' : ''}</span>
+        <span class="chip-domain">每 ${Math.round((s.interval || 3600) / 60)} 分钟</span>
+        ${s.lastId ? `<span class="chip-domain">最新: ${esc(s.lastId)}</span>` : ''}
+        <span class="sub-actions">
+          <button class="chip-del" title="${s.enabled ? '暂停' : '启用'}" onclick="toggleSubscription('${esc(s.name)}')">${s.enabled ? '⏸' : '▶'}</button>
+          <button class="chip-del" title="删除" onclick="deleteSubscription('${esc(s.name)}')">×</button>
+        </span>
+      </div>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="form-hint" style="padding:12px;text-align:center;color:var(--color-danger)">加载失败: ' + esc(e.message) + '</div>';
+  }
+};
+
+const saveSubscription = async () => {
+  const name = $('subName').value.trim();
+  const url = $('subUrl').value.trim();
+  if (!name || !url) { toast('名称和 URL 不能为空', 'warn'); return; }
+  const cookieName = $('subCookieName')?.value || '';
+  const interval = parseInt($('subInterval')?.value) || 3600;
+  const format = $('subFormat').value.trim();
+  try {
+    const r = await API.post('/api/subscriptions', { name, url, cookieName, interval, format });
+    if (r && r.ok) {
+      toast(`订阅 \"${name}\" 已保存`, 'success');
+      $('subName').value = '';
+      $('subUrl').value = '';
+      $('subFormat').value = '';
+      await loadSubscriptions();
+    } else {
+      toast('保存失败', 'error');
+    }
+  } catch (e) {
+    toast('保存失败: ' + e.message, 'error');
+  }
+};
+window.saveSubscription = saveSubscription;
+
+const toggleSubscription = async (name) => {
+  // 启用/禁用: 读取当前列表, 找到反转 enabled
+  const sub = _subscriptions.find(s => s.name === name);
+  if (!sub) return;
+  sub.enabled = !sub.enabled;
+  try {
+    await API.post('/api/subscriptions', sub);
+    await loadSubscriptions();
+  } catch (e) {
+    toast('操作失败', 'error');
+  }
+};
+window.toggleSubscription = toggleSubscription;
+
+const deleteSubscription = async (name) => {
+  if (!await showConfirm('删除订阅', `确认删除订阅 \"${name}\"?`)) return;
+  try {
+    const r = await API.del('/api/subscriptions/' + encodeURIComponent(name));
+    if (r && r.ok) {
+      toast(`订阅 \"${name}\" 已删除`, 'success');
+      await loadSubscriptions();
+    }
+  } catch (e) {
+    toast('删除失败: ' + e.message, 'error');
+  }
+};
+window.deleteSubscription = deleteSubscription;
+
+const checkSubscriptions = async () => {
+  const result = $('subCheckResult');
+  if (!result) return;
+  result.textContent = '⏳ 检查中...';
+  try {
+    const r = await API.post('/api/subscriptions/check');
+    const count = (r && r.results && r.results.length) || 0;
+    result.textContent = `✅ 检查完成, 发现 ${count} 个新内容`;
+    toast(`订阅检查完成, ${count} 个新任务已添加`, count > 0 ? 'success' : 'info');
+    if (count > 0) await loadTasks();
+  } catch (e) {
+    result.textContent = '❌ ' + e.message;
+  }
+};
+window.checkSubscriptions = checkSubscriptions;
+
 // ── Image Full Zoom ────────────────────────────────────────────────
 function showImgFull(img) {
   console.log('[fnytdlp] showImgFull called, src=', img && img.getAttribute('src'));

@@ -136,6 +136,7 @@
       <div class="toolbar-group">
         <button class="toolbar-btn ghost" onclick="showSettingsModal()" aria-label="打开设置">⚙<span class="btn-text">设置</span></button>
         <button class="toolbar-btn ghost" onclick="showCookieModal()" aria-label="管理 Cookie">🍪<span class="btn-text">Cookie</span></button>
+        <button class="toolbar-btn ghost" onclick="showSubscriptionModal()" aria-label="管理订阅">🔔<span class="btn-text">订阅</span></button>
       </div>
     </div>
 
@@ -558,6 +559,67 @@
           <img class="wx" src="images/sponsor_wechat.png" alt="微信赞助" onclick="showImgFull(this)">
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Subscription Modal -->
+<div class="modal-overlay" id="subModal" onclick="if(event.target===this)hideModal('subModal')">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">🔔 频道订阅</span>
+      <button class="btn-icon" onclick="hideModal('subModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-hint" style="margin-bottom:12px">
+        订阅频道/播放列表后, 系统每 5 分钟自动检查新内容并下载。<br>
+        支持 YouTube 频道、B 站 UP 主、播放列表等 yt-dlp 支持的 URL。
+      </div>
+      <div class="form-group">
+        <label class="form-label">已订阅的频道</label>
+        <div id="subList" class="sub-list">加载中...</div>
+      </div>
+      <details class="form-advanced" open>
+        <summary>添加新订阅</summary>
+        <div class="form-group">
+          <label class="form-label">频道名称</label>
+          <input class="input" id="subName" placeholder="例如: 我的YouTube频道">
+        </div>
+        <div class="form-group">
+          <label class="form-label">频道/播放列表 URL</label>
+          <input class="input" id="subUrl" placeholder="https://www.youtube.com/@channel">
+        </div>
+        <div class="form-row">
+          <div class="form-group form-group-half">
+            <label class="form-label">Cookie (可选)</label>
+            <select class="select" id="subCookieName">
+              <option value="">无</option>
+            </select>
+          </div>
+          <div class="form-group form-group-half">
+            <label class="form-label">检查间隔</label>
+            <select class="select" id="subInterval">
+              <option value="1800">30 分钟</option>
+              <option value="3600" selected>1 小时</option>
+              <option value="7200">2 小时</option>
+              <option value="21600">6 小时</option>
+              <option value="86400">24 小时</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">格式 (可选, 空=使用默认)</label>
+          <input class="input" id="subFormat" placeholder="例: bv*+ba/b">
+        </div>
+      </details>
+      <div class="form-group">
+        <button class="btn btn-sm btn-ghost" onclick="checkSubscriptions()">🔄 立即检查所有订阅</button>
+        <span id="subCheckResult" class="form-hint" style="margin-left:8px"></span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="hideModal('subModal')">关闭</button>
+      <button class="btn btn-primary" onclick="saveSubscription()">💾 保存订阅</button>
     </div>
   </div>
 </div>
