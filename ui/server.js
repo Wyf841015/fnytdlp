@@ -519,6 +519,10 @@ const buildYtDlpArgs = (task) => {
   if (config.proxyUrl) args.push('--proxy', config.proxyUrl);
   // Playlist
   if (config.noPlaylist) args.push('--no-playlist');
+  // 部分播放列表: 如果指定了 playlistItems, 传 --playlist-items
+  if (opts.playlistItems) {
+    args.push('--playlist-items', String(opts.playlistItems));
+  }
   // ── 新增 12 参数 (2025-06-09) ───────────────────────────────────
   // 限速
   if (config.limitRate) args.push('--limit-rate', String(config.limitRate));
@@ -855,6 +859,140 @@ const parseAndCreateTask = async (url, options = {}) => {
   return task;
 };
 
+// ── /api/formats (调用 yt-dlp -F 获取格式列表) ─────────────────────
+const listFormats = (url, cookieName) => {
+  return new Promise((resolve, reject) => {
+    if (!isValidUrl(url)) return reject(new Error('Invalid URL'));
+    const args = ['-F', '--no-warnings'];
+    if (cookieName && config.cookies && config.cookies.some(c => c.name === cookieName)) {
+      const fp = getCookieFile(cookieName);
+      if (fs.existsSync(fp)) args.push('--cookies', fp);
+    }
+    args.push(url);
+    const proc = spawn(YT_DLP_BIN, args, {
+      env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' },
+      timeout: 30000,
+    });
+    let out = '', err = '';
+    proc.stdout.on('data', c => out += c);
+    proc.stderr.on('data', c => err += c);
+    const timer = setTimeout(() => {
+      try { proc.kill('SIGTERM'); } catch (e) {}
+      reject(new Error('yt-dlp list-formats timeout (30s)'));
+    }, 30000);
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(err.trim() || `exit ${code}`));
+      // 解析 yt-dlp -F 文本输出为结构化格式列表
+      const lines = out.split('\n');
+      const formats = [];
+      let headerPassed = false;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('-')) continue;
+        if (trimmed.startsWith('ID') && trimmed.includes('EXT')) { headerPassed = true; continue; }
+        if (!headerPassed) continue;
+        // 格式: ID  EXT  RESOLUTION  FPS CH | FILESIZE  TBR  PROTO  | CODECS  MORE
+        const parts = trimmed.split(/\s{2,}/);
+        if (parts.length < 2) continue;
+        const formatId = parts[0].trim();
+        const ext = parts[1].trim().toLowerCase();
+        if (formatId === 'ID' || formatId.startsWith('-')) continue;
+        let resolution = '', fps = '', filesize = '', tbr = '', vcodec = '', acodec = '';
+        const rest = trimmed;
+        // 解析分辨率
+        const resMatch = rest.match(/(\d{3,4}x\d{3,4}|\d{3,4}p)\s*/);
+        if (resMatch) resolution = resMatch[1].trim();
+        // 解析 FPS
+        const fpsMatch = rest.match(/(\d+)\s*fps/i);
+        if (fpsMatch) fps = fpsMatch[1];
+        // 解析文件大小
+        const sizeMatch = rest.match(/~?([\d.]+[KMG]?i?B)/);
+        if (sizeMatch) filesize = sizeMatch[1];
+        // 解析 codec
+        const codecMatch = rest.match(/(avc\d?|hevc|vp9|av01|h\.?264|h\.?265|mp4a\.?\w*|opus|aac|ac-?3|flac)\s*/i);
+        if (codecMatch) {
+          const c = codecMatch[1].toLowerCase();
+          if (c.includes('mp4a') || c.includes('opus') || c.includes('aac') || c.includes('ac') || c.includes('flac')) {
+            acodec = c;
+          } else {
+            vcodec = c;
+          }
+        }
+        // 音频 only / video only / 普通
+        const isAudio = trimmed.includes('audio only') || (!resolution && acodec);
+        const isVideo = resolution && vcodec;
+        // 音频码率
+        const abrMatch = rest.match(/(\d+)k\s*\(?\s*(mp4a|opus|aac|ac-?3|flac)?/i);
+        if (abrMatch && isAudio) tbr = abrMatch[1] + 'k';
+
+        formats.push({
+          formatId, ext, resolution, fps,
+          filesize, tbr,
+          vcodec: vcodec || (isAudio ? 'none' : ''),
+          acodec: acodec || (isVideo ? 'none' : ''),
+          type: isAudio ? 'audio' : isVideo ? 'video' : 'combined',
+          formatNote: resolution || (isAudio ? 'audio only' : ''),
+        });
+      }
+      resolve(formats);
+    });
+    proc.on('error', reject);
+  });
+};
+
+// ── /api/playlist (检测播放列表并返回条目) ──────────────────────
+const listPlaylist = (url, cookieName) => {
+  return new Promise((resolve, reject) => {
+    if (!isValidUrl(url)) return reject(new Error('Invalid URL'));
+    // --flat-playlist: 只列出 ID + title, 不下载元数据
+    const args = ['--flat-playlist', '--dump-json', '--no-warnings'];
+    if (cookieName && config.cookies && config.cookies.some(c => c.name === cookieName)) {
+      const fp = getCookieFile(cookieName);
+      if (fs.existsSync(fp)) args.push('--cookies', fp);
+    }
+    args.push(url);
+    const proc = spawn(YT_DLP_BIN, args, {
+      env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' },
+      timeout: 60000,
+    });
+    let out = '', err = '';
+    proc.stdout.on('data', c => out += c);
+    proc.stderr.on('data', c => err += c);
+    const timer = setTimeout(() => {
+      try { proc.kill('SIGTERM'); } catch (e) {}
+      reject(new Error('yt-dlp playlist info timeout (60s)'));
+    }, 60000);
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(err.trim() || `exit ${code}`));
+      // 解析每行 JSON
+      const entries = [];
+      const lines = out.trim().split('\n');
+      for (const line of lines) {
+        try {
+          const e = JSON.parse(line);
+          if (e._type === 'playlist') {
+            // 顶层是 playlist 本身, 继续解析子项
+            continue;
+          }
+          entries.push({
+            id: e.id,
+            title: e.title || '',
+            url: e.url || e.webpage_url || '',
+            duration: e.duration || 0,
+            thumbnail: e.thumbnail || '',
+            uploader: e.uploader || '',
+            index: e.playlist_index || entries.length + 1,
+          });
+        } catch (e) { /* 跳过解析失败行 */ }
+      }
+      resolve(entries);
+    });
+    proc.on('error', reject);
+  });
+};
+
 // ── /api/info (调用 yt-dlp --dump-json 解析单 URL 元数据) ──────────
 const infoUrl = (url, cookieName) => {
   return new Promise((resolve, reject) => {
@@ -1058,6 +1196,59 @@ const handle = async (req, res) => {
       }
     }
     // ── info / parse ──
+    else if (pathname === '/api/formats' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const url = body.url?.trim();
+      if (!url) return sendJSON(res, 400, { error: 'url is required' });
+      try {
+        const formats = await listFormats(url, body.cookieName);
+        sendJSON(res, 200, { formats });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
+    else if (pathname === '/api/playlist' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const url = body.url?.trim();
+      if (!url) return sendJSON(res, 400, { error: 'url is required' });
+      try {
+        const entries = await listPlaylist(url, body.cookieName);
+        sendJSON(res, 200, { entries, isPlaylist: entries.length > 1 || (entries.length === 1 && entries[0].index > 0) });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
+    else if (pathname === '/api/tasks/batch' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const urlsInput = body.urls || [];
+      const options = body.options || {};
+      if (!Array.isArray(urlsInput) || urlsInput.length === 0) {
+        return sendJSON(res, 400, { error: 'urls array is required' });
+      }
+      // 去重 + 去空
+      const unique = [...new Set(urlsInput.map(u => u.trim()).filter(Boolean))];
+      if (unique.length === 0) return sendJSON(res, 400, { error: 'no valid URLs' });
+      const results = { ok: [], fail: [], skipped: [] };
+      for (const url of unique) {
+        // 去重: 已有 downloading/pending 任务时跳过
+        let skip = false;
+        for (const [id, t] of tasks) {
+          if (t.url === url && (t.status === 'pending' || t.status === 'downloading')) {
+            results.skipped.push(url);
+            skip = true;
+            break;
+          }
+        }
+        if (skip) continue;
+        try {
+          const task = await parseAndCreateTask(url, { ...options });
+          results.ok.push({ id: task.id, url });
+        } catch (e) {
+          results.fail.push({ url, error: e.message });
+        }
+      }
+      sendJSON(res, 200, results);
+    }
     else if (pathname === '/api/info' && req.method === 'POST') {
       const body = await parseBody(req);
       const url = body.url?.trim();

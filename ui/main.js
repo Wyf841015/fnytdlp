@@ -586,6 +586,8 @@ const parseUrls = async () => {
         </div>
       </div>
     `;
+    // 自动检测播放列表
+    setTimeout(parsePlaylist, 100);
   } catch (e) {
     $('addPreview').textContent = '❌ 解析失败: ' + e.message;
   }
@@ -626,22 +628,50 @@ const submitAddTask = async () => {
     } catch (e) { /* 静默 */ }
   }
 
-  let ok = 0, fail = 0;
-  let skipped = 0;
-  for (const url of unique) {
-    // 前端去重: 已有 downloading/pending 任务时跳过
-    if (tasks.some(t => t.url === url && (t.status === 'pending' || t.status === 'downloading'))) {
-      skipped++;
-      continue;
+  // 检测播放列表勾选: 如果检测到播放列表且用户勾选了部分集数
+  const checkedPlaylist = [];
+  if (_playlistEntries.length > 0) {
+    const checkboxes = document.querySelectorAll('.playlist-checkbox:checked');
+    checkboxes.forEach(cb => {
+      const idx = parseInt(cb.dataset.index);
+      if (idx > 0) checkedPlaylist.push(idx);
+    });
+    // 如果有勾选但数量小于总数, 传 playlistItems
+    if (checkedPlaylist.length > 0 && checkedPlaylist.length < _playlistEntries.length) {
+      options.playlistItems = checkedPlaylist.join(',');
     }
+    // 清空缓存
+    _playlistEntries = [];
+    hidePlaylist();
+  }
+
+  let ok = 0, fail = 0, skipped = 0;
+  // 如果超过 1 个 URL, 使用批量端点
+  if (unique.length > 1) {
     try {
-      const body = { url, options };
-      // 传入已缓存的解析结果, 后端跳过第二次 infoUrl
-      if (_lastParsedInfo?.title) body.parsedInfo = _lastParsedInfo;
-      const r = await API.post('/api/tasks', body);
-      if (r.task) ok++;
-      else fail++;
-    } catch (e) { fail++; }
+      const r = await API.post('/api/tasks/batch', { urls: unique, options });
+      if (r.ok) ok = r.ok.length;
+      if (r.fail) fail = r.fail.length;
+      if (r.skipped) skipped = r.skipped.length;
+    } catch (e) {
+      fail = unique.length;
+    }
+  } else {
+    for (const url of unique) {
+      // 前端去重: 已有 downloading/pending 任务时跳过
+      if (tasks.some(t => t.url === url && (t.status === 'pending' || t.status === 'downloading'))) {
+        skipped++;
+        continue;
+      }
+      try {
+        const body = { url, options };
+        // 传入已缓存的解析结果, 后端跳过第二次 infoUrl
+        if (_lastParsedInfo?.title) body.parsedInfo = _lastParsedInfo;
+        const r = await API.post('/api/tasks', body);
+        if (r.task) ok++;
+        else fail++;
+      } catch (e) { fail++; }
+    }
   }
   hideModal('addTaskModal');
   const msg = `已添加 ${ok} 个任务` + (skipped ? `（${skipped} 跳过）` : '') + (fail ? `，${fail} 失败` : '');
@@ -854,6 +884,126 @@ const submitInfo = async () => {
   }
 };
 window.submitInfo = submitInfo;
+
+// ── 格式预览 + 播放列表 (P0 enhance) ──────────────────────────
+let _lastFormats = []; // 缓存格式列表
+
+const fetchFormats = async () => {
+  const raw = $('addUrls').value.trim();
+  const urlRegex = /https?:\/\/[^\s<>"']+/g;
+  const urls = raw.match(urlRegex);
+  if (!urls || urls.length === 0) { toast('请先输入 URL', 'warn'); return; }
+  const url = urls[0];
+  const cookieName = $('addCookieName')?.value?.trim() || '';
+  const container = $('formatListContainer');
+  const list = $('formatList');
+  if (!list || !container) return;
+  container.style.display = 'block';
+  list.innerHTML = '<div class="info-preview" style="padding:12px;text-align:center">⏳ 加载格式列表...</div>';
+  try {
+    const r = await API.post('/api/formats', { url, cookieName });
+    if (!r || !r.formats || r.formats.length === 0) {
+      list.innerHTML = '<div class="info-preview" style="padding:12px;text-align:center">未找到可用格式</div>';
+      return;
+    }
+    _lastFormats = r.formats;
+    // 按视频/音频/合并分组
+    const videos = r.formats.filter(f => f.type === 'video');
+    const audios = r.formats.filter(f => f.type === 'audio');
+    const combined = r.formats.filter(f => f.type === 'combined' || (!f.type && f.vcodec && f.acodec));
+    
+    let html = '';
+    const renderGroup = (title, items, icon) => {
+      if (items.length === 0) return '';
+      let g = `<div class="format-group"><div class="format-group-title">${icon} ${title} (${items.length})</div>`;
+      for (const f of items) {
+        const label = `${f.formatId} · ${f.resolution || f.formatNote || '-'} · .${f.ext}${f.filesize ? ' · ' + f.filesize : ''}${f.tbr ? ' · ' + f.tbr : ''}${f.fps ? ' · ' + f.fps + 'fps' : ''}`;
+        g += `<div class="format-item selectable" onclick="selectFormat('${f.formatId}')" title="点击使用此格式">
+          <span class="format-id">${f.formatId}</span>
+          <span class="format-res">${f.resolution || '-'}</span>
+          <span class="format-ext">.${f.ext}</span>
+          <span class="format-size">${f.filesize || (f.tbr || '')}</span>
+          <span class="format-codec">${f.vcodec || f.acodec || '-'}</span>
+        </div>`;
+      }
+      return g + '</div>';
+    };
+    html += renderGroup('视频流', videos, '🎬');
+    html += renderGroup('音频流', audios, '🎵');
+    html += renderGroup('合并流', combined, '📦');
+    if (!html) html = '<div class="info-preview" style="padding:12px;text-align:center">无可用格式数据</div>';
+    list.innerHTML = html;
+    toast(`已加载 ${r.formats.length} 个格式`, 'info');
+  } catch (e) {
+    list.innerHTML = `<div class="info-preview" style="padding:12px;text-align:center;color:var(--color-danger)">❌ ${esc(e.message)}</div>`;
+  }
+};
+window.fetchFormats = fetchFormats;
+
+const hideFormatList = () => {
+  const c = $('formatListContainer');
+  if (c) c.style.display = 'none';
+};
+window.hideFormatList = hideFormatList;
+
+const selectFormat = (formatId) => {
+  $('addFormatCustom').value = formatId;
+  toast(`已选格式: ${formatId}`, 'success');
+};
+window.selectFormat = selectFormat;
+
+// ── 播放列表解析 ──────────────────────────────────────────────
+let _playlistEntries = [];
+
+const parsePlaylist = async () => {
+  const raw = $('addUrls').value.trim();
+  const urlRegex = /https?:\/\/[^\s<>"']+/g;
+  const urls = raw.match(urlRegex);
+  if (!urls || urls.length === 0) return;
+  const url = urls[0];
+  const cookieName = $('addCookieName')?.value?.trim() || '';
+  const container = $('playlistContainer');
+  const items = $('playlistItems');
+  if (!container || !items) return;
+  try {
+    const r = await API.post('/api/playlist', { url, cookieName });
+    if (!r || !r.entries || r.entries.length <= 1) {
+      container.style.display = 'none';
+      _playlistEntries = [];
+      return;
+    }
+    _playlistEntries = r.entries;
+    container.style.display = 'block';
+    let html = '';
+    for (const e of r.entries) {
+      const checked = 'checked';
+      const duration = e.duration ? formatDuration(e.duration) : '';
+      html += `<label class="playlist-item" onclick="event.stopPropagation()">
+        <input type="checkbox" class="playlist-checkbox" data-index="${e.index}" ${checked}>
+        <span class="playlist-index">#${e.index}</span>
+        <span class="playlist-title">${esc(e.title || e.id)}</span>
+        ${duration ? `<span class="playlist-duration">${duration}</span>` : ''}
+      </label>`;
+    }
+    items.innerHTML = html;
+    toast(`检测到播放列表 (${r.entries.length} 集)`, 'info');
+  } catch (e) {
+    container.style.display = 'none';
+    _playlistEntries = [];
+  }
+};
+window.parsePlaylist = parsePlaylist;
+
+const hidePlaylist = () => {
+  const c = $('playlistContainer');
+  if (c) c.style.display = 'none';
+};
+window.hidePlaylist = hidePlaylist;
+
+const selectAllPlaylist = (checked) => {
+  document.querySelectorAll('.playlist-checkbox').forEach(cb => cb.checked = checked);
+};
+window.selectAllPlaylist = selectAllPlaylist;
 
 // ── Settings Modal ────────────────────────────────────────────────
 // ── Browse Directory Modal ────────────────────────────────────────
@@ -1348,6 +1498,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           // 自动触发解析 (只对单 URL)
           if (urls.length === 1 && typeof parseUrls === 'function') {
             parseUrls();
+          }
+          // 多 URL 自动触发批量解析格式
+          if (urls.length > 1 && typeof fetchFormats === 'function') {
+            setTimeout(fetchFormats, 200);
           }
         }
       }, 10);

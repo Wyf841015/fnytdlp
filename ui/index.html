@@ -33,6 +33,24 @@
       background: linear-gradient(135deg, hsl(30, 75%, 55%), hsl(30, 80%, 45%)) !important;
       box-shadow: 0 2px 12px hsl(30, 75%, 50% / 0.4) !important;
     }
+    /* 格式列表 + 播放列表样式 */
+    .format-group { margin-bottom: 8px; }
+    .format-group-title { font-size:0.85rem; font-weight:600; padding:4px 8px; background:var(--bg-alt); border-radius:var(--radius-sm) var(--radius-sm) 0 0; }
+    .format-item.selectable { cursor:pointer; display:flex; gap:6px; padding:4px 8px; font-size:0.8rem; border-bottom:1px solid var(--border); transition:background 0.15s; }
+    .format-item.selectable:hover { background:var(--bg-hover); }
+    .format-item.selectable .format-id { font-weight:600; color:var(--color-primary); min-width:40px; }
+    .format-item.selectable .format-res { min-width:80px; }
+    .format-item.selectable .format-ext { min-width:40px; color:var(--text-dim); }
+    .format-item.selectable .format-size { min-width:60px; text-align:right; color:var(--text-dim); }
+    .format-item.selectable .format-codec { color:var(--text-dim); }
+    .playlist-items { border:1px solid var(--border); border-radius:var(--radius-sm); }
+    .playlist-item { display:flex; align-items:center; gap:8px; padding:6px 8px; cursor:pointer; border-bottom:1px solid var(--border); transition:background 0.15s; }
+    .playlist-item:last-child { border-bottom:none; }
+    .playlist-item:hover { background:var(--bg-hover); }
+    .playlist-checkbox { width:16px; height:16px; cursor:pointer; }
+    .playlist-index { font-size:0.8rem; color:var(--text-dim); min-width:30px; }
+    .playlist-title { flex:1; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .playlist-duration { font-size:0.8rem; color:var(--text-dim); min-width:50px; text-align:right; }
   </style>
 </head>
 <body>
@@ -188,7 +206,26 @@
       <div class="form-group">
         <label class="form-label">视频信息预览</label>
         <div id="addPreview" class="info-preview">点 "解析" 按钮查看元数据</div>
-        <div style="margin-top:6px"><button class="btn btn-sm btn-ghost" onclick="parseUrls()">🔍 解析第一条</button></div>
+        <div class="form-row" style="margin-top:6px;gap:8px">
+          <button class="btn btn-sm btn-ghost" onclick="parseUrls()">🔍 解析信息</button>
+          <button class="btn btn-sm btn-ghost" onclick="fetchFormats()">📋 查看格式</button>
+        </div>
+      </div>
+      <!-- 格式列表 (解析后显示) -->
+      <div id="formatListContainer" style="display:none" class="form-group">
+        <label class="form-label">可用格式 <button class="btn btn-sm btn-ghost" onclick="hideFormatList()">✕ 收起</button></label>
+        <div id="formatList" class="format-list" style="max-height:300px;overflow-y:auto"></div>
+        <div class="form-hint">点击格式自动填入自定义格式输入框</div>
+      </div>
+      <!-- 播放列表 (检测到 playlist 时显示) -->
+      <div id="playlistContainer" style="display:none" class="form-group">
+        <label class="form-label">📋 播放列表条目 <button class="btn btn-sm btn-ghost" onclick="hidePlaylist()">✕ 收起</button></label>
+        <div class="form-hint">勾选要下载的集数, 不勾则下载全部</div>
+        <div id="playlistItems" class="playlist-items" style="max-height:300px;overflow-y:auto"></div>
+        <div class="form-row" style="margin-top:6px;gap:8px">
+          <button class="btn btn-xs btn-ghost" onclick="selectAllPlaylist(true)">全选</button>
+          <button class="btn btn-xs btn-ghost" onclick="selectAllPlaylist(false)">取消全选</button>
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Cookie 认证</label>
