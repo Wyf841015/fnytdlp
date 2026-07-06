@@ -391,6 +391,7 @@ const renderTask = (t) => {
   const title = t.filename || t.url;
   const showActions = t.status === 'error' || t.status === 'stopped' || t.status === 'paused';
   const canStop = t.status === 'downloading' || t.status === 'pending' || t.status === 'processing';
+  const canPlay = t.status === 'completed' && t.filename;
   // M-8: 已用时间 (用 t.createdAt 计算, downloading/processing 状态时显示)
   const isActive = t.status === 'downloading' || t.status === 'processing';
   let elapsed = '';
@@ -412,6 +413,7 @@ const renderTask = (t) => {
         <div class="task-actions" onclick="event.stopPropagation()">
           ${showActions ? `<button class="btn-icon-sm" title="重试" onclick="retryTask('${esc(t.id)}')">🔄</button>` : ''}
           ${canStop ? `<button class="btn-icon-sm" title="停止" onclick="stopTask('${esc(t.id)}')">⏹</button>` : ''}
+          ${canPlay ? `<button class="btn-icon-sm" title="播放" onclick="openPlayer('${esc(t.id)}')">▶</button>` : ''}
           <button class="btn-icon-sm" title="删除" onclick="deleteTask('${esc(t.id)}')">🗑</button>
         </div>
       </div>
@@ -885,6 +887,41 @@ const submitInfo = async () => {
 };
 window.submitInfo = submitInfo;
 
+// ── 限速滑块同步 ──────────────────────────────────────────
+const LIMIT_RATE_PRESETS = [
+  { label: '不限速', value: '' },
+  { label: '500K', value: '500K' },
+  { label: '1M', value: '1M' },
+  { label: '2M', value: '2M' },
+  { label: '5M', value: '5M' },
+  { label: '10M', value: '10M' },
+  { label: '20M', value: '20M' },
+  { label: '50M', value: '50M' },
+  { label: '自定义', value: '__custom__' },
+];
+const syncLimitRateSlider = (sliderVal) => {
+  const idx = parseInt(sliderVal);
+  const preset = LIMIT_RATE_PRESETS[idx] || LIMIT_RATE_PRESETS[0];
+  const input = $('setLimitRate');
+  const hint = $('setLimitRateHint');
+  if (!input || !hint) return;
+  if (preset.value === '__custom__') {
+    // 自定义模式: 不覆盖输入框
+    hint.textContent = '手动输入自定义值';
+  } else {
+    input.value = preset.value;
+    hint.textContent = preset.label;
+  }
+};
+window.syncLimitRateSlider = syncLimitRateSlider;
+
+// 将 currentMode 值映射到滑块位置 (在 showSettingsModal 中使用)
+const _limitRateToSliderIdx = (val) => {
+  if (!val) return 0;
+  const idx = LIMIT_RATE_PRESETS.findIndex(p => p.value === val);
+  return idx >= 0 ? idx : LIMIT_RATE_PRESETS.length - 1;
+};
+
 // ── 格式预览 + 播放列表 (P0 enhance) ──────────────────────────
 let _lastFormats = []; // 缓存格式列表
 
@@ -1094,6 +1131,12 @@ const showSettingsModal = async () => {
   $('setMtime').checked = cfg.mtime !== false;  // 默认 true
   // 高级 8 字段
   $('setLimitRate').value = cfg.limitRate || '';
+  // 同步限速滑块
+  const slider = $('setLimitRateSlider');
+  if (slider) {
+    slider.value = _limitRateToSliderIdx(cfg.limitRate || '');
+    syncLimitRateSlider(slider.value);
+  }
   $('setSubLangs').value = cfg.subLangs || '';
   $('setAudioFormat').value = cfg.audioFormat || '';
   $('setAudioQuality').value = cfg.audioQuality || '';
@@ -1369,8 +1412,38 @@ function showTaskDetail(id) {
     }
   }
   showModal('taskDetailModal');
+  // 已完成的任务显示播放按钮
+  const playBtn = $('tdPlayBtn');
+  if (playBtn) {
+    playBtn.style.display = (t.status === 'completed' && t.filename) ? '' : 'none';
+  }
 }
 window.showTaskDetail = showTaskDetail;
+
+// ── 视频播放器 ──────────────────────────────────────────────
+const openPlayer = (id) => {
+  const t = tasks.find(x => x.id === id);
+  if (!t || t.status !== 'completed' || !t.filename) { toast('无可播放的文件', 'warn'); return; }
+  const video = $('playerVideo');
+  const info = $('playerInfo');
+  if (!video || !info) return;
+  // 通过 /api/play/:id 流式加载视频
+  const src = API._url(`/api/play/${id}`);
+  video.src = src;
+  video.load();
+  info.textContent = `${esc(t.filename)} · ${t.totalBytes ? formatBytes(t.totalBytes) : ''}`;
+  showModal('playerModal');
+  // 自动播放
+  video.play().catch(() => {});
+};
+window.openPlayer = openPlayer;
+
+const closePlayer = () => {
+  const video = $('playerVideo');
+  if (video) { video.pause(); video.src = ''; }
+  hideModal('playerModal');
+};
+window.closePlayer = closePlayer;
 window._currentDetailTaskId = _currentDetailTaskId;
 window._confirmResolve = _confirmResolve;
 

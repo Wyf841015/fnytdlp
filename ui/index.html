@@ -51,6 +51,11 @@
     .playlist-index { font-size:0.8rem; color:var(--text-dim); min-width:30px; }
     .playlist-title { flex:1; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .playlist-duration { font-size:0.8rem; color:var(--text-dim); min-width:50px; text-align:right; }
+    /* 视频播放器 */
+    .modal-fullscreen { width:90vw; max-width:1200px; }
+    .player-body { padding:0; background:#000; display:flex; align-items:center; justify-content:center; min-height:60vh; }
+    .player-video { width:100%; max-height:80vh; outline:none; }
+    .player-info { font-size:0.85rem; color:var(--text-dim); }
   </style>
 </head>
 <body>
@@ -384,8 +389,11 @@
             <div class="form-row">
               <div class="form-group form-group-half">
                 <label class="form-label">限速 (--limit-rate)</label>
-                <input class="input" id="setLimitRate" placeholder="例: 5M / 500K / 2.5M">
-                <div class="form-hint">空 = 不限速</div>
+                <div class="input-group">
+                  <input class="input" id="setLimitRate" placeholder="例: 5M / 500K / 2.5M" style="flex:1">
+                  <input type="range" id="setLimitRateSlider" min="0" max="100" value="0" step="1" style="width:120px" oninput="syncLimitRateSlider(this.value)">
+                </div>
+                <div class="form-hint" id="setLimitRateHint">不限速</div>
               </div>
               <div class="form-group form-group-half">
                 <label class="form-label">字幕语言 (--sub-langs)</label>
@@ -611,8 +619,30 @@
       </div>
     </div>
     <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="openPlayer(_currentDetailTaskId)" id="tdPlayBtn" style="display:none">▶ 播放</button>
       <button class="btn btn-ghost" onclick="hideModal('taskDetailModal')">关闭</button>
       <button class="btn btn-danger" onclick="try{deleteTask(_currentDetailTaskId);hideModal('taskDetailModal')}catch(e){console.error(e)}">🗑 删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- Video Player Modal -->
+<div class="modal-overlay" id="playerModal" onclick="if(event.target===this)closePlayer()">
+  <div class="modal modal-fullscreen">
+    <div class="modal-header">
+      <span class="modal-title">▶ 视频播放</span>
+      <div class="modal-header-actions">
+        <button class="btn-icon" onclick="closePlayer()">✕</button>
+      </div>
+    </div>
+    <div class="modal-body player-body">
+      <video id="playerVideo" class="player-video" controls autoplay preload="auto" playsinline>
+        您的浏览器不支持视频播放
+      </video>
+    </div>
+    <div class="modal-footer">
+      <span id="playerInfo" class="player-info"></span>
+      <button class="btn btn-ghost" onclick="closePlayer()">关闭</button>
     </div>
   </div>
 </div>

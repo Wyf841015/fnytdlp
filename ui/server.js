@@ -1195,6 +1195,54 @@ const handle = async (req, res) => {
         sendJSON(res, 500, { error: '读取目录失败: ' + e.message });
       }
     }
+    // ── play: 播放已完成任务的视频文件 ──────────────────────────
+    else if (pathname.startsWith('/api/play/') && req.method === 'GET') {
+      const id = pathname.split('/')[3];
+      const task = getTask(id);
+      if (!task) return sendJSON(res, 404, { error: 'not found' });
+      if (task.status !== 'completed' || !task.filename) {
+        return sendJSON(res, 400, { error: 'task not completed or no file' });
+      }
+      const fileDir = task.options?._downloadFolder || config.downloadPath;
+      const fp = path.join(fileDir, task.filename);
+      if (!fs.existsSync(fp)) return sendJSON(res, 404, { error: 'file not found' });
+      try {
+        const stat = fs.statSync(fp);
+        const ext = path.extname(fp).toLowerCase();
+        const ct = {
+          '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska',
+          '.m4a': 'audio/mp4', '.mp3': 'audio/mpeg', '.opus': 'audio/opus',
+          '.flac': 'audio/flac', '.wav': 'audio/wav', '.m4v': 'video/mp4',
+        }[ext] || 'application/octet-stream';
+        // 支持 Range 请求 (HTML5 视频拖拽/快进)
+        const range = req.headers.range;
+        if (range) {
+          const parts = range.replace(/bytes=/, '').split('-');
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+          const chunkSize = end - start + 1;
+          res.writeHead(206, {
+            'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunkSize,
+            'Content-Type': ct,
+            'Cache-Control': 'no-cache',
+          });
+          const stream = fs.createReadStream(fp, { start, end });
+          stream.pipe(res);
+        } else {
+          res.writeHead(200, {
+            'Content-Type': ct,
+            'Content-Length': stat.size,
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'no-cache',
+          });
+          fs.createReadStream(fp).pipe(res);
+        }
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
     // ── info / parse ──
     else if (pathname === '/api/formats' && req.method === 'POST') {
       const body = await parseBody(req);
