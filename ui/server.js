@@ -21,6 +21,10 @@
 
 'use strict';
 
+// ══════════════════════════════════════════════════════════════════
+// 模块 1: 导入 + 常量
+// ══════════════════════════════════════════════════════════════════
+
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -79,6 +83,9 @@ const FFMPEG_BIN = process.env.FFMPEG_BIN || '/usr/bin/ffmpeg';
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+// ══════════════════════════════════════════════════════════════════
+// 模块 2: 工具函数 (parseSpeed, parseDuration, sanitizeFilename, LOG)
+// ══════════════════════════════════════════════════════════════════
 // ── logging ────────────────────────────────────────────────────────────
 const pad = n => String(n).padStart(2, '0');
 const ts = () => {
@@ -235,6 +242,9 @@ const getLatestIds = (url, cookieName, lastId) => {
     proc.on('error', reject);
   });
 };
+// ══════════════════════════════════════════════════════════════════
+// 模块 3: 配置 + 任务存储 + SSE
+// ══════════════════════════════════════════════════════════════════
 const DEFAULT_CONFIG = {
   downloadPath: path.join(DATA_DIR, 'downloads'),
   concurrentDownloads: 3,         // 同时下载任务数
@@ -351,6 +361,9 @@ const handleSSE = (req, res) => {
 // ── active download processes ────────────────────────────────────────
 const _procs = new Map();   // taskId -> ChildProcess
 
+// ══════════════════════════════════════════════════════════════════
+// 模块 4: 任务 CRUD + yt-dlp 管理
+// ══════════════════════════════════════════════════════════════════
 // ── URL validation ────────────────────────────────────────────────────
 // ── Cookies 多网站管理 ─────────────────────────────────────────────
 const safeName = (s) => String(s).toLowerCase().replace(/[^a-z0-9_-]/g, '_').substring(0, 64);
@@ -1135,6 +1148,9 @@ const infoUrl = (url, cookieName) => {
   });
 };
 
+// ══════════════════════════════════════════════════════════════════
+// 模块 5: HTTP 请求处理 (路由 + 静态文件)
+// ══════════════════════════════════════════════════════════════════
 // ── request handler ───────────────────────────────────────────────────
 const handle = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1529,6 +1545,9 @@ const serveStatic = (reqPath, res) => {
   }
 };
 
+// ══════════════════════════════════════════════════════════════════
+// 模块 6: Server 启动 + 生命周期
+// ══════════════════════════════════════════════════════════════════
 // ── main ──────────────────────────────────────────────────────────────
 // P1-4: 全局异常处理 — 防止 unhandled rejection / uncaught exception 静默崩溃
 process.on('unhandledRejection', (reason) => {
