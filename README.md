@@ -99,11 +99,10 @@ fnytdlp/
 │       ├── yt-dlp-x86_64        # x86_64 平台 (fnOS 服务器主流)
 │       ├── yt-dlp-aarch64       # aarch64 平台 (ARM NAS)
 │       └── LICENSE.txt          # yt-dlp Unlicense 全文
-├── tests/                       # TDD 测试套件
-│   ├── test_comprehensive.js   # 端到端 + API 集成测试
-│   ├── test_modules.js         # 模块单元测试
-│   ├── test_new_modules.js     # 新模块测试
-│   └── test_*.js               # 20+ 专项测试
+├── tests/                       # TDD 测试套件 (104 个测试)
+│   ├── test_comprehensive.js           # 基础功能测试 (parseSpeed/parseDuration 等)
+│   ├── test_comprehensive_server.js    # 服务端+前端纯函数测试 (59 个用例)
+│   └── test_progress_aggregator.js     # 多流进度聚合测试 (12 个场景)
 ├── cmd/
 │   ├── bin/yt-dlp-x86_64        # 跨平台 yt-dlp binary
 │   ├── bin/yt-dlp-aarch64
@@ -183,8 +182,11 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 
 **测试覆盖增强**
 
-- 新增 59 个纯函数测试覆盖：`sanitizeFilename`(7)、`isValidUrl`(3)、`isSystemPath`(2)、`isSafeDownloadPath`(3)、`safeName`(4)、`detectArch`(4)、`parseFormatsLine`(6)、`validateCookieContent`(4)、batch URL/task duplicate/cookie domain/URL regex/formats/formatsSpeed/formatsDuration/esc 等（104 全部通过）
-- 覆盖路径穿越防御 / SSRF 防护 / 2MB body 限制 / HTML 转义 / 系统路径黑名单
+- 新增 59 个纯函数测试 (`test_comprehensive_server.js`)，3 个测试文件共 104 个用例全部通过
+- **服务端安全函数**：`sanitizeFilename`(路径穿越防御/128截断/null兜底)、`isValidUrl`(SSRF防护/file/ftp/data/js拦截)、`isSystemPath`(11个系统路径阻断)、`isSafeDownloadPath`(白名单校验)、`safeName`(Cookie文件名安全化)、`detectArch`(x64/arm64/ia32)、`validateCookieContent`(Netscape格式校验/100KB限制)
+- **API 逻辑**：yt-dlp `-F` 格式解析(avc1/VP9/HEVC/Opus 6种)、batch URL去重、任务去重(downloading去重/completed放行)、Cookie域名匹配(含短域名误匹配防护)、parseBody 2MB限制
+- **前端纯函数**：`formatBytes`(KB/MB/GB)、`formatSpeed`、`formatDuration`(MM:SS/HH:MM:SS)、`esc`(HTML 5字符转义)
+- 项目结构 `tests/` 目录更新为3个测试文件
 
 ### v0.2.2 (2026-06-11)
 
@@ -263,14 +265,14 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 ## 测试
 
 ```bash
-# 运行全部测试
+# 运行全部测试 (104 个)
 node --test tests/*.js
 
 # 运行特定测试文件
-node --test tests/test_comprehensive.js
-node --test tests/test_modules.js
+node --test tests/test_comprehensive.js        # 基础功能 (33 个)
+node --test tests/test_comprehensive_server.js # 服务端/前端纯函数 (59 个)
+node --test tests/test_progress_aggregator.js  # 多流进度聚合 (12 个)
 ```
-
 ## 维护者
 
 - 作者：[@再见一零一二](https://gitee.com/wyf1015)
