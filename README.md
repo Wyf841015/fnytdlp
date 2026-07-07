@@ -179,6 +179,13 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 
 ## 版本历史
 
+### v0.2.3 (2026-07-07)
+
+**测试覆盖增强**
+
+- 新增 59 个纯函数测试覆盖：`sanitizeFilename`(7)、`isValidUrl`(3)、`isSystemPath`(2)、`isSafeDownloadPath`(3)、`safeName`(4)、`detectArch`(4)、`parseFormatsLine`(6)、`validateCookieContent`(4)、batch URL/task duplicate/cookie domain/URL regex/formats/formatsSpeed/formatsDuration/esc 等（104 全部通过）
+- 覆盖路径穿越防御 / SSRF 防护 / 2MB body 限制 / HTML 转义 / 系统路径黑名单
+
 ### v0.2.2 (2026-06-11)
 
 **安全加固**
