@@ -1618,8 +1618,22 @@ const startSSE = () => {
   if (_eventSource) _eventSource.close();
   _sseReconnecting = false;  // 重置闭锁
   _eventSource = new EventSource(GATEWAY_BASE + '/api/events');
-  _eventSource.addEventListener('task-created', () => loadTasks());
-  _eventSource.addEventListener('task-updated', () => loadTasks());
+  _eventSource.addEventListener('task-created', (e) => {
+    let t;
+    try { t = JSON.parse(e.data); } catch (err) { console.warn('SSE task-created parse failed', e.data?.slice?.(0, 200), err); return; }
+    const i = tasks.findIndex(x => x.id === t.id);
+    if (i >= 0) tasks[i] = { ...tasks[i], ...t };
+    else tasks.push(t);
+    scheduleRender();
+  });
+  _eventSource.addEventListener('task-updated', (e) => {
+    let t;
+    try { t = JSON.parse(e.data); } catch (err) { console.warn('SSE task-updated parse failed', e.data?.slice?.(0, 200), err); return; }
+    const i = tasks.findIndex(x => x.id === t.id);
+    if (i >= 0) tasks[i] = { ...tasks[i], ...t };
+    else tasks.push(t);
+    scheduleRender();
+  });
   _eventSource.addEventListener('task-progress', (e) => {
     let t;
     try { t = JSON.parse(e.data); } catch (err) { console.warn('SSE task-progress parse failed', e.data?.slice?.(0, 200), err); return; }
@@ -1749,8 +1763,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   // load initial
   await loadTasks();
-  // poll every 5s as fallback (SSE 主, 轮询备)
-  setInterval(loadTasks, 5000);
+  // poll every 30s as fallback (SSE 主, 轮询备)
+  setInterval(loadTasks, 30000);
   // SSE
   startSSE();
   // health

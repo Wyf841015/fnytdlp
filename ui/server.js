@@ -1525,16 +1525,7 @@ const serveStatic = (reqPath, res) => {
   if (fp.includes('..')) { res.writeHead(403); res.end('Forbidden'); return; }
   fp = path.join(UI_DIR, fp);
   if (!fp.startsWith(UI_DIR)) { res.writeHead(403); res.end('Forbidden'); return; }
-  const ext = path.extname(fp);
-  const ct = {
-    '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
-    '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
-    '.svg': 'image/svg+xml', '.ico': 'image/x-icon'
-  }[ext] || 'application/octet-stream';
-  if (fs.existsSync(fp) && fs.statSync(fp).isFile()) {
-    res.writeHead(200, { 'Content-Type': ct });
-    res.end(fs.readFileSync(fp));
-  } else {
+  if (!fs.existsSync(fp) || !fs.statSync(fp).isFile()) {
     const idx = path.join(UI_DIR, 'index.html');
     if (fs.existsSync(idx)) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -1542,6 +1533,22 @@ const serveStatic = (reqPath, res) => {
     } else {
       res.writeHead(404); res.end('Not Found');
     }
+    return;
+  }
+  const ext = path.extname(fp);
+  const ct = {
+    '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
+    '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+    '.svg': 'image/svg+xml', '.ico': 'image/x-icon'
+  }[ext] || 'application/octet-stream';
+  const size = fs.statSync(fp).size;
+  // 大于 512KB 的用流式发送，避免大文件（如 yt-dlp binary）全量读内存
+  if (size > 524288) {
+    res.writeHead(200, { 'Content-Type': ct, 'Content-Length': size, 'Cache-Control': 'public, max-age=3600' });
+    fs.createReadStream(fp).pipe(res);
+  } else {
+    res.writeHead(200, { 'Content-Type': ct });
+    res.end(fs.readFileSync(fp));
   }
 };
 
@@ -1607,17 +1614,7 @@ const main = () => {
       }
     }).catch(e => LOG('[sub] auto-check error:', e.message));
   }, 300000); // 5 分钟
-  // yt-dlp 健康检查
-  try {
-    const testProc = spawn(YT_DLP_BIN, ['--version'], { timeout: 5000, env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' } });
-    let vOut = '';
-    testProc.stdout.on('data', c => vOut += c);
-    testProc.on('close', (code) => {
-      if (code === 0) LOG('[yt-dlp] version=' + vOut.trim());
-      else LOG('[WARN] yt-dlp check exit=' + code);
-    });
-    testProc.on('error', (e) => LOG('[WARN] yt-dlp not available: ' + e.message));
-  } catch (e) { LOG('[WARN] yt-dlp check failed: ' + e.message); }
+  // yt-dlp 版本已在启动时检查 (line 134), 此处不再重复
   LOG('=== server ready ===');
 };
 
