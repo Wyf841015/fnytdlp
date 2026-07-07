@@ -178,6 +178,16 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 
 ## 版本历史
 
+### v0.2.4 (2026-07-07)
+
+**性能优化 & 代码清理**
+
+- SSE 增量更新: task-created/task-updated 改为增量合并, 不再全量 loadTasks() (下载中场景 ~80% HTTP 请求减少)
+- 后备轮询 5s→30s (SSE 为主, 轮询备)
+- serveStatic 流式发送: >512KB 文件用 createReadStream (避免 yt-dlp binary 全量占内存)
+- 删除重复的 yt-dlp 版本检查 (启动时只检查一次)
+- 内联 CSS (48 行) 从 index.html 迁移到 components.css
+
 ### v0.2.3 (2026-07-07)
 
 **测试覆盖增强**
