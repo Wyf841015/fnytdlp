@@ -68,6 +68,18 @@ body {
   transform: scale(0.98);
 }
 
+.btn-secondary {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border);
+  font-weight: 500;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-elevated);
+  border-color: var(--border-prominent);
+  color: var(--text);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--text-muted);

@@ -1045,6 +1045,20 @@ html[data-theme='light'] .task-item.selected {
   padding: 4px 6px;
   font-size: 0.85rem;
   border-radius: var(--radius-xs);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--t-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.btn-icon-sm:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+  color: var(--text);
 }
 
 /* ===== Mono ===== */
