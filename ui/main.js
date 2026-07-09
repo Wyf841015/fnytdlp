@@ -245,10 +245,12 @@ const onUrlInput = (el) => {
   const allUrls = lines.every(l => URL_RE.test(l));
   if (allUrls) {
     status.textContent = '✓ ' + lines.length + ' 个 URL';
-    status.style.color = 'var(--success)';
+    status.style.color = '';
+    status.className = 'add-url-status url-ok';
   } else {
     status.textContent = '⚠ 部分行不是有效 URL';
-    status.style.color = 'var(--warning)';
+    status.style.color = '';
+    status.className = 'add-url-status url-warn';
   }
 };
 window.onUrlInput = onUrlInput;
@@ -1158,7 +1160,7 @@ const loadBrowseDir = async (dirPath) => {
     list.innerHTML = html;
   } catch (err) {
     const msg = (err && (err.error || err.message)) || '请求失败';
-    list.innerHTML = `<div style="text-align:center;padding:24px;color:var(--color-danger, #f56c6c)">❌ ${escapeHtml(msg)}</div>`;
+    list.innerHTML = `<div style="text-align:center;padding:24px;color:var(--color-danger)">❌ ${escapeHtml(msg)}</div>`;
   }
 };
 
@@ -1734,10 +1736,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('[fnytdlp] init started, DOMContentLoaded OK');
   // init sparklines
   try {
-    sparkActive = new Sparkline('sparkActive', { max: 30, color: 'hsl(217, 91%, 60%)' });
-    sparkSpeed = new Sparkline('sparkSpeed', { max: 30, color: 'hsl(152, 58%, 53%)' });
+    sparkActive = new Sparkline('sparkActive', { max: 30, color: 'hsl(220, 100%, 60%)' });
+    sparkSpeed = new Sparkline('sparkSpeed', { max: 30, color: 'hsl(170, 100%, 42%)' });
     sparkCompleted = new Sparkline('sparkCompleted', { max: 30, color: 'hsl(280, 60%, 65%)' });
-    sparkTotal = new Sparkline('sparkTotal', { max: 30, color: 'hsl(40, 96%, 53%)' });
+    sparkTotal = new Sparkline('sparkTotal', { max: 30, color: 'hsl(45, 100%, 50%)' });
     // 启动滚动采样 (200ms 间隔, sparkline.js start() 才真正启动 setInterval _tick)
     sparkActive.start(0);
     sparkSpeed.start(0);

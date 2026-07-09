@@ -347,7 +347,7 @@ body {
 .badge-recording::before { content: ''; position: absolute; left: 5px; top: 50%; transform: translateY(-50%); width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
 .badge-live { background: var(--danger-muted); color: var(--danger); margin-left: 4px; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-.badge-encrypted { background: #8b5cf620; color: #8b5cf6; font-size: 0.78rem; padding: 1px 6px; border-radius: 4px; }
+.badge-encrypted { background: hsl(272, 76%, 60% / 0.12); color: hsl(272, 76%, 60%); font-size: 0.78rem; padding: 1px 6px; border-radius: 4px; }
 
 /* ===== Cards ===== */
 .card {
@@ -926,9 +926,26 @@ html[data-theme='light'] .toast.info {
 }
 .add-url-status {
   font-size: 0.75rem;
-  color: var(--accent);
+  color: var(--text-dim);
   font-weight: 500;
+  transition: color var(--t-fast);
 }
+.add-url-status.url-ok { color: var(--success); }
+.add-url-status.url-warn { color: var(--warning); }
+
+/* 信息预览区 */
+.info-preview {
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .add-preview-section {
   margin-bottom: 14px;
 }

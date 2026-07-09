@@ -646,13 +646,26 @@ html[data-theme='light'] .task-item.selected {
   font-size: 0.6rem;
 }
 
+.task-error {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--danger-muted);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
 .task-speed {
   color: var(--accent-cyan);
   font-weight: 600;
   font-family: var(--font-mono);
 }
 .task-eta {
-  color: #f59e0b;
+  color: var(--accent-gold);
   font-weight: 500;
   font-size: 0.8rem;
 }
@@ -1981,6 +1994,15 @@ html[data-theme='light'] .task-item.selected {
 }
 .sched-item.sched-completed {
   border-color: hsl(152, 50%, 45% / 0.3);
+}
+html[data-theme='light'] .sched-item.sched-recording {
+  background: hsl(0, 80%, 55% / 0.04);
+}
+html[data-theme='light'] .sched-item.sched-error {
+  background: hsl(0, 70%, 50% / 0.05);
+}
+html[data-theme='light'] .sched-item.sched-completed {
+  border-color: hsl(152, 60%, 55% / 0.3);
 }
 .sched-item.sched-cancelled {
   opacity: 0.5;
