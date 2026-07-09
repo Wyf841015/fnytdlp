@@ -1499,7 +1499,8 @@ html[data-theme='light'] .task-item.selected {
     padding: 6px 8px;
     border-radius: var(--radius-sm);
     font-size: 0.85rem;
-    min-width: 34px;
+    min-width: 44px;
+    min-height: 44px;
     flex-shrink: 0;
   }
   .toolbar-btn .btn-text { display: none; }
@@ -1517,8 +1518,13 @@ html[data-theme='light'] .task-item.selected {
   /* Task item */
   .task-item { padding: 10px 12px; }
   .task-headline { flex-wrap: wrap; gap: 6px; }
-  .task-actions { gap: 2px; }
-  .task-actions .btn-icon-sm { padding: 4px; }
+  .task-actions { gap: 4px; }
+  .task-actions .btn-icon-sm {
+    padding: 8px 10px;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 1rem;
+  }
   .expand-indicator { display: none; }  /* hide on mobile, save space */
 
   /* Batch bar */

@@ -335,9 +335,19 @@ const loadTasks = async () => {
     updateStatusBar();
   } catch (e) {
     console.error('loadTasks failed', e);
-    // 后端故障 / 离线时给用户明确反馈 (P2 修复)
+    // 后端故障 / 离线时给用户明确反馈
     const offline = !navigator.onLine;
     toast(offline ? '网络断开, 请检查连接' : `加载任务失败: ${e.message}`, 'error');
+    // 在任务列表显示重试按钮
+    const list = $('taskList');
+    const empty = $('emptyState');
+    if (list && empty) {
+      empty.style.display = 'block';
+      empty.querySelector('.empty-title').textContent = '⚠ 加载失败';
+      empty.querySelector('.empty-text').textContent = offline ? '网络连接已断开' : e.message;
+      empty.querySelector('.empty-actions').style.display = 'flex';
+      empty.querySelector('.empty-actions').innerHTML = `<button class="btn btn-primary" onclick="loadTasks()">🔄 重试</button>`;
+    }
   }
 };
 
@@ -353,7 +363,18 @@ const renderTasks = () => {
   });
   if (filtered.length === 0) {
     list.innerHTML = '';
-    $('emptyState').style.display = 'block';
+    // 区分「没有任务」和「搜索无结果」
+    if (tasks.length === 0) {
+      $('emptyState').style.display = 'block';
+      $('emptyState').querySelector('.empty-title').textContent = '还没有下载任务';
+      $('emptyState').querySelector('.empty-text').textContent = '粘贴视频链接开始下载，支持 YouTube · B站 · 抖音 · 微博 · X 等 1000+ 站点';
+      $('emptyState').querySelector('.empty-actions').style.display = 'flex';
+    } else {
+      $('emptyState').style.display = 'block';
+      $('emptyState').querySelector('.empty-title').textContent = query ? `没有匹配 "${query}" 的任务` : '没有此状态的任务';
+      $('emptyState').querySelector('.empty-text').textContent = query ? '试试其他关键词或清除搜索' : '切换其他筛选标签看看';
+      $('emptyState').querySelector('.empty-actions').style.display = 'none';
+    }
   } else {
     $('emptyState').style.display = 'none';
     list.innerHTML = filtered.map(renderTask).join('');
@@ -637,6 +658,13 @@ const submitAddTask = async () => {
   const urlRegex = /https?:\/\/[^\s<>"']+/g;
   const urls = raw.match(urlRegex) || [];
   if (urls.length === 0) { toast('未找到有效 URL (http/https)', 'warn'); return; }
+  // 防双击: 禁用提交按钮
+  const submitBtn = document.querySelector('#addTaskModal .btn-primary');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.classList.add('btn-loading');
+    submitBtn.textContent = '⏳ 提交中...';
+  }
   // 去重
   const unique = [...new Set(urls)];
   const options = {};
@@ -712,6 +740,12 @@ const submitAddTask = async () => {
   const msg = `已添加 ${ok} 个任务` + (skipped ? `（${skipped} 跳过）` : '') + (fail ? `，${fail} 失败` : '');
   toast(msg, (skipped || fail) ? 'warn' : 'success');
   await loadTasks();
+  // 恢复按钮状态
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.classList.remove('btn-loading');
+    submitBtn.textContent = '📥 开始下载';
+  }
 };
 window.submitAddTask = submitAddTask;
 

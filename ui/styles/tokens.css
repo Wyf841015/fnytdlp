@@ -88,7 +88,7 @@
   --radius-full: 9999px;
 
   /* Transitions */
-  --t-fast: 0.12s ease;
+  --t-fast: 0.15s ease;
   --t: 0.2s ease;
   --t-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --t-spring: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -163,4 +163,25 @@ html[data-theme='light'] {
 /* ===== Smooth scrolling ===== */
 html {
   scroll-behavior: smooth;
+}
+
+/* ===== Reduced Motion — 尊重用户系统动效偏好 ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .header-bar::after,
+  .progress-fill::after,
+  .progress-track::after,
+  .empty-icon-glow,
+  .kpi-value.bump,
+  .task-item,
+  .badge-recording::before {
+    animation: none !important;
+  }
 }
