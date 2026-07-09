@@ -358,7 +358,7 @@ body {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), hsl(152, 70%, 65%));
+  background: linear-gradient(90deg, var(--accent), hsl(170, 100%, 42%));
   border-radius: var(--radius-full);
   transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
@@ -864,28 +864,155 @@ html[data-theme='light'] .toast.info {
   animation: spin 0.8s linear infinite;
 }
 
-/* ===== fnytdlp 特定样式 (从 index.html inline 迁移) ===== */
+/* ===== Add Task Modal 增强 ===== */
+.add-url-section {
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 14px;
+  transition: border-color var(--t-fast);
+}
+.add-url-section:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 1px var(--accent-border);
+}
+.add-url-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.add-url-header .form-label {
+  margin-bottom: 0;
+}
+.add-url-actions {
+  display: flex;
+  gap: 4px;
+}
+.add-url-input {
+  min-height: 72px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  resize: vertical;
+}
+.add-url-hints {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.add-url-status {
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-weight: 500;
+}
+.add-preview-section {
+  margin-bottom: 14px;
+}
+.add-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.add-preview-header .form-label {
+  margin-bottom: 0;
+}
+.add-preview-actions {
+  display: flex;
+  gap: 6px;
+}
+.add-options-row {
+  margin-bottom: 14px;
+}
+/* 格式快速选择 pills */
+.format-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.format-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.format-pill:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+.format-pill.active {
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-color: var(--accent-border);
+  font-weight: 600;
+}
+
+/* 高级选项折叠区 */
+.form-advanced {
+  margin-top: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  overflow: hidden;
+}
+.form-advanced summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: color var(--t-fast);
+  user-select: none;
+}
+.form-advanced summary:hover {
+  color: var(--text);
+}
+.form-advanced[open] summary {
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 0;
+}
+.form-advanced > .form-group,
+.form-advanced > .form-row {
+  padding: 12px 14px;
+  margin-bottom: 0;
+}
+.form-advanced > .form-group:not(:last-child),
+.form-advanced > .form-row:not(:last-child) {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ===== fnytdlp 特定样式 ===== */
 .yt-logo {
   width: 32px; height: 32px;
-  background: linear-gradient(135deg, hsl(30, 75%, 50%), hsl(25, 80%, 40%));
+  background: linear-gradient(135deg, hsl(220, 100%, 60%), hsl(200, 100%, 45%));
   border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
   color: white; font-size: 0.85rem; font-weight: 900;
-  box-shadow: 0 0 12px hsl(30, 75%, 50% / 0.3);
+  box-shadow: 0 0 12px hsl(220, 100%, 60% / 0.3);
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .yt-logo:hover {
   transform: scale(1.08);
-  box-shadow: 0 0 20px hsl(30, 75%, 50% / 0.5);
+  box-shadow: 0 0 20px hsl(220, 100%, 60% / 0.5);
 }
 .sponsor-btn-yt {
-  background: linear-gradient(135deg, hsl(30, 75%, 50%), hsl(25, 80%, 40%)) !important;
+  background: linear-gradient(135deg, hsl(220, 100%, 60%), hsl(200, 100%, 45%)) !important;
   color: white !important;
   font-weight: 600 !important;
 }
 .sponsor-btn-yt:hover {
-  background: linear-gradient(135deg, hsl(30, 75%, 55%), hsl(30, 80%, 45%)) !important;
-  box-shadow: 0 2px 12px hsl(30, 75%, 50% / 0.4) !important;
+  background: linear-gradient(135deg, hsl(220, 100%, 65%), hsl(220, 100%, 50%)) !important;
+  box-shadow: 0 2px 12px hsl(220, 100%, 60% / 0.4) !important;
 }
 /* 格式列表 + 播放列表样式 */
 .format-group { margin-bottom: 8px; }

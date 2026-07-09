@@ -232,6 +232,35 @@ try {
   }
 } catch (e) {}
 
+// ── 添加任务弹窗辅助函数 ──────────────────────────────────────
+const URL_RE = /^https?:\/\/.+/i;
+const onUrlInput = (el) => {
+  const status = $('addUrlStatus');
+  const val = el.value.trim();
+  if (!val) {
+    status.textContent = '';
+    return;
+  }
+  const lines = val.split('\n').filter(Boolean);
+  const allUrls = lines.every(l => URL_RE.test(l));
+  if (allUrls) {
+    status.textContent = '✓ ' + lines.length + ' 个 URL';
+    status.style.color = 'var(--success)';
+  } else {
+    status.textContent = '⚠ 部分行不是有效 URL';
+    status.style.color = 'var(--warning)';
+  }
+};
+window.onUrlInput = onUrlInput;
+
+const selectFormatPill = (btn) => {
+  document.querySelectorAll('.format-pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  const custom = $('addFormatCustom');
+  if (custom) custom.value = btn.dataset.value;
+};
+window.selectFormatPill = selectFormatPill;
+
 // 版权年份
 document.addEventListener('DOMContentLoaded', () => {
   const cy = document.getElementById('copyright-year');
@@ -355,12 +384,12 @@ const renderTasks = () => {
 const renderTask = (t) => {
   const statusBadge = {
     pending: '<span class="badge badge-pending">⏳ 等待</span>',
-    downloading: '<span class="badge badge-active">⏬ 下载中</span>',
-    processing: '<span class="badge badge-active">🔄 处理</span>',
-    completed: '<span class="badge badge-success">✅ 已完成</span>',
-    error: '<span class="badge badge-danger">❌ 出错</span>',
-    paused: '<span class="badge badge-warning">⏸ 暂停</span>',
-    stopped: '<span class="badge badge-warning">⏹ 停止</span>',
+    downloading: '<span class="badge badge-downloading">⏬ 下载中</span>',
+    processing: '<span class="badge badge-downloading">🔄 处理中</span>',
+    completed: '<span class="badge badge-completed">✅ 已完成</span>',
+    error: '<span class="badge badge-error">❌ 出错</span>',
+    paused: '<span class="badge badge-paused">⏸ 暂停</span>',
+    stopped: '<span class="badge badge-stopped">⏹ 已停止</span>',
   }[t.status] || `<span class="badge">${esc(t.status)}</span>`;
 
   // 多流下载进度: 视频 50% + 音频 50%, 合并 99% → 完成 100%
@@ -409,18 +438,20 @@ const renderTask = (t) => {
     <div class="task-item ${isSelected ? 'selected' : ''}" data-id="${esc(t.id)}" role="button" tabindex="0" aria-label="任务: ${esc(t.title || title)}" onclick="showTaskDetail('${esc(t.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showTaskDetail('${esc(t.id)}')}">
       <div class="task-row task-row-1">
         ${checkbox}
-        <div class="task-title">${esc(t.title || title)}</div>
+        <div class="task-info-block">
+          <div class="task-title-row">
+            <div class="task-title">${esc(t.title || title)}</div>
+            ${statusBadge}
+            ${cookieBadge}
+          </div>
+          <div class="task-url-sub" title="${esc(t.url)}">${esc(t.url)}</div>
+        </div>
         <div class="task-actions" onclick="event.stopPropagation()">
           ${showActions ? `<button class="btn-icon-sm" title="重试" onclick="retryTask('${esc(t.id)}')">🔄</button>` : ''}
           ${canStop ? `<button class="btn-icon-sm" title="停止" onclick="stopTask('${esc(t.id)}')">⏹</button>` : ''}
           ${canPlay ? `<button class="btn-icon-sm" title="播放" onclick="openPlayer('${esc(t.id)}')">▶</button>` : ''}
           <button class="btn-icon-sm" title="删除" onclick="deleteTask('${esc(t.id)}')">🗑</button>
         </div>
-      </div>
-      <div class="task-row-2">
-        <span class="task-url-text" title="${esc(t.url)}">${esc(t.url)}</span>
-        ${statusBadge}
-        ${cookieBadge}
       </div>
       ${isActive ? `
         <div class="task-progress">
@@ -431,9 +462,11 @@ const renderTask = (t) => {
         <div class="task-meta">
           ${phaseLabel ? `<span class="task-phase">${phaseLabel}</span>` : ''}
           <span class="task-speed">⚡ ${speed}</span>
-          <span class="task-eta">⏱ 剩余 ${eta}</span>
+          <span class="task-sep">·</span>
+          <span class="task-eta">⏱ ${eta}</span>
+          <span class="task-sep">·</span>
           <span>${downloaded} / ${total}</span>
-          ${elapsed}
+          ${elapsed ? `<span class="task-sep">·</span> ${elapsed}` : ''}
         </div>
       ` : ''}
       ${t.error ? `<div class="task-error">${esc(t.error)}</div>` : ''}
@@ -543,7 +576,9 @@ window.loadCookieSelect = loadCookieSelect;
 const showAddTaskModal = () => {
   console.log('[fnytdlp] showAddTaskModal() called');
   $('addUrls').value = '';
-  $('addFormat').value = '';
+  $('addFormatCustom').value = '';
+  // 清除格式 pill 选中状态
+  document.querySelectorAll('.format-pill').forEach(p => p.classList.remove('active'));
   $('addOutputTemplate').value = '';
   $('addSponsorBlock').value = '';
   $('addEmbedMetadata').checked = true;
@@ -605,10 +640,8 @@ const submitAddTask = async () => {
   // 去重
   const unique = [...new Set(urls)];
   const options = {};
-  const fmtSelect = $('addFormat').value.trim();
   const fmtCustom = $('addFormatCustom').value.trim();
-  const fmt = fmtCustom || fmtSelect;
-  if (fmt) options.format = fmt;
+  if (fmtCustom) options.format = fmtCustom;
   const ot = $('addOutputTemplate').value.trim();
   if (ot) options.outputTemplate = ot;
   const sb = $('addSponsorBlock').value.trim();

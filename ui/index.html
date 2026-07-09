@@ -91,17 +91,16 @@
       </div>
     </div>
 
-    <!-- Search Bar (M-3) -->
-    <div class="search-bar">
-      <input type="search" id="searchInput" class="search-input" placeholder="🔍 搜索 URL / 文件名..." aria-label="搜索任务">
-    </div>
-
-    <!-- Filter Tabs -->
+    <!-- Filter Tabs + 搜索 (合并为一行) -->
     <div class="tabs" id="filterTabs" role="tablist" aria-label="任务状态筛选">
       <button class="tab active" data-filter="all" role="tab" aria-selected="true" aria-controls="taskList" tabindex="0" aria-label="全部任务">全部 <span class="count" id="countAll">0</span></button>
       <button class="tab" data-filter="downloading" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="下载中任务">下载中 <span class="count" id="countActive">0</span></button>
       <button class="tab" data-filter="completed" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="已完成任务">已完成 <span class="count" id="countDone">0</span></button>
       <button class="tab" data-filter="error" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="出错任务">出错 <span class="count" id="countError">0</span></button>
+      <div class="tab-spacer"></div>
+      <div class="tab-search">
+        <input type="search" id="searchInput" class="tab-search-input" placeholder="🔍 搜索 URL / 文件名..." aria-label="搜索任务">
+      </div>
     </div>
 
     <!-- 批量操作栏 (M-7) — 默认隐藏, JS 加 .visible 显示 -->
@@ -127,12 +126,21 @@
 
     <!-- Empty State -->
     <div id="emptyState" class="empty-state" style="display:none">
-      <div class="empty-icon">📥</div>
+      <div class="empty-icon-wrap">
+        <div class="empty-icon-glow"></div>
+        <div class="empty-icon">📥</div>
+      </div>
       <div class="empty-title">还没有下载任务</div>
-      <div class="empty-text">点 "+ 添加" 粘贴视频链接开始</div>
+      <div class="empty-text">粘贴视频链接开始下载，支持 <strong>YouTube</strong> · <strong>B站</strong> · <strong>抖音</strong> · <strong>微博</strong> · <strong>X</strong> 等 1000+ 站点</div>
       <div class="empty-actions">
         <button class="btn btn-primary" onclick="showAddTaskModal()">➕ 添加任务</button>
         <button class="btn btn-ghost" onclick="showInfoModal()">🔍 解析 URL</button>
+      </div>
+      <div class="empty-tips">
+        <span class="empty-tip">⌨ N 新建</span>
+        <span class="empty-tip">🔍 S 搜索</span>
+        <span class="empty-tip">🔄 R 刷新</span>
+        <span class="empty-tip">📋 1-4 筛选</span>
       </div>
     </div>
   </main>
@@ -155,26 +163,41 @@
       <button class="btn-icon" onclick="hideModal('addTaskModal')">✕</button>
     </div>
     <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">视频链接 <span class="text-danger">*</span></label>
-        <textarea class="input" id="addUrls" rows="3" placeholder="每行一个 URL, 支持 YouTube/B站/抖音/微博/X/西瓜 等 1000+ 站点..."></textarea>
-        <div class="form-hint">支持单 URL / 批量 (一行一个) / 播放列表</div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">视频信息预览</label>
-        <div id="addPreview" class="info-preview">点 "解析" 按钮查看元数据</div>
-        <div class="form-row" style="margin-top:6px;gap:8px">
-          <button class="btn btn-sm btn-ghost" onclick="parseUrls()">🔍 解析信息</button>
-          <button class="btn btn-sm btn-ghost" onclick="fetchFormats()">📋 查看格式</button>
+      <!-- URL 输入区 — 更突出 -->
+      <div class="add-url-section">
+        <div class="add-url-header">
+          <label class="form-label">视频链接 <span class="text-danger">*</span></label>
+          <div class="add-url-actions">
+            <button class="btn btn-xs btn-ghost" onclick="document.getElementById('addUrls').value='';document.getElementById('addUrls').focus()" title="清空">✕ 清空</button>
+          </div>
+        </div>
+        <textarea class="input add-url-input" id="addUrls" rows="3" placeholder="粘贴视频链接，支持 YouTube/B站/抖音/微博/X/西瓜 等 1000+ 站点..." oninput="onUrlInput(this)"></textarea>
+        <div class="add-url-hints">
+          <span class="form-hint">支持单 URL / 批量 (一行一个) / 播放列表</span>
+          <span class="add-url-status" id="addUrlStatus"></span>
         </div>
       </div>
+
+      <!-- 预览 + 操作 -->
+      <div class="add-preview-section">
+        <div class="add-preview-header">
+          <span class="form-label">信息预览</span>
+          <div class="add-preview-actions">
+            <button class="btn btn-sm btn-ghost" onclick="parseUrls()">🔍 解析</button>
+            <button class="btn btn-sm btn-ghost" onclick="fetchFormats()" id="addFetchFormatsBtn" style="display:none">📋 格式</button>
+          </div>
+        </div>
+        <div id="addPreview" class="info-preview">粘贴 URL 后点「解析」查看元数据</div>
+      </div>
+
       <!-- 格式列表 (解析后显示) -->
       <div id="formatListContainer" style="display:none" class="form-group">
         <label class="form-label">可用格式 <button class="btn btn-sm btn-ghost" onclick="hideFormatList()">✕ 收起</button></label>
         <div id="formatList" class="format-list" style="max-height:300px;overflow-y:auto"></div>
         <div class="form-hint">点击格式自动填入自定义格式输入框</div>
       </div>
-      <!-- 播放列表 (检测到 playlist 时显示) -->
+
+      <!-- 播放列表 -->
       <div id="playlistContainer" style="display:none" class="form-group">
         <label class="form-label">📋 播放列表条目 <button class="btn btn-sm btn-ghost" onclick="hidePlaylist()">✕ 收起</button></label>
         <div class="form-hint">勾选要下载的集数, 不勾则下载全部</div>
@@ -184,36 +207,33 @@
           <button class="btn btn-xs btn-ghost" onclick="selectAllPlaylist(false)">取消全选</button>
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Cookie 认证</label>
-        <select class="select" id="addCookieName">
-          <option value="">无 (不使用 Cookie)</option>
-        </select>
-        <div class="form-hint">在 🍪 Cookie 管理里配置多个网站 cookie, 此处选择要使用的</div>
+
+      <!-- 格式快速选择 + Cookie -->
+      <div class="form-row add-options-row">
+        <div class="form-group form-group-half">
+          <label class="form-label">快速格式</label>
+          <div class="format-pills" id="addFormatPills">
+            <button class="format-pill" data-value="bv*+ba/b" onclick="selectFormatPill(this)">最佳</button>
+            <button class="format-pill" data-value="bv*[height<=1080]+ba" onclick="selectFormatPill(this)">1080p</button>
+            <button class="format-pill" data-value="bv*[height<=720]+ba" onclick="selectFormatPill(this)">720p</button>
+            <button class="format-pill" data-value="ba" onclick="selectFormatPill(this)">仅音频</button>
+            <button class="format-pill" data-value="" onclick="selectFormatPill(this)">默认</button>
+          </div>
+        </div>
+        <div class="form-group form-group-half">
+          <label class="form-label">Cookie 认证</label>
+          <select class="select" id="addCookieName">
+            <option value="">无</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">格式选择</label>
-        <select class="select" id="addFormat">
-          <option value="">使用默认 (设置里的格式)</option>
-          <option value="bv*+ba/b">最佳画质+音频 (默认)</option>
-          <option value="bv*+ba">最佳画质 + 最佳音频</option>
-          <option value="bv*+ba[acodec=mp3]">最佳画质 + MP3 音频</option>
-          <option value="b/b">最佳 (单文件)</option>
-          <option value="worst">最小体积</option>
-          <option value="bv*[height<=4320]+ba">8K 限高</option>
-          <option value="bv*[height<=2160]+ba">4K 限高</option>
-          <option value="bv*[height<=1440]+ba">2K 限高</option>
-          <option value="bv*[height<=1080]+ba">1080p 限高</option>
-          <option value="bv*[height<=720]+ba">720p 限高</option>
-          <option value="bv*[height<=480]+ba">480p 限高</option>
-          <option value="ba">仅音频 (最佳)</option>
-          <option value="ba/b">仅音频 (最佳/降级)</option>
-          <option value="worstaudio">仅音频 (最小)</option>
-        </select>
-        <div class="form-hint">或用自定义格式: <input class="input input-inline" id="addFormatCustom" placeholder="例: bv*[height<=1080][fps<=30]+ba" style="width:240px"></div>
-      </div>
+
       <details class="form-advanced">
         <summary>高级选项</summary>
+        <div class="form-group">
+          <label class="form-label">自定义格式</label>
+          <input class="input" id="addFormatCustom" placeholder="例: bv*[height<=1080][fps<=30]+ba">
+        </div>
         <div class="form-group">
           <label class="form-label">输出文件名模板</label>
           <input class="input" id="addOutputTemplate" placeholder="%(title)s [%(id)s].%(ext)s" value="">
@@ -225,18 +245,10 @@
           <div class="form-hint">支持: sponsor / selfpromo / interaction / intro / outro / preview / music_offtopic</div>
         </div>
         <div class="form-group form-group-inline">
-          <label class="form-label form-label-inline">
-            <input type="checkbox" id="addEmbedMetadata" checked> 嵌入元数据
-          </label>
-          <label class="form-label form-label-inline">
-            <input type="checkbox" id="addWriteSubs"> 下载字幕
-          </label>
-          <label class="form-label form-label-inline">
-            <input type="checkbox" id="addWriteThumbnail" checked> 下载缩略图
-          </label>
-          <label class="form-label form-label-inline">
-            <input type="checkbox" id="addNoPlaylist"> 仅单视频 (不下载播放列表)
-          </label>
+          <label class="form-label form-label-inline"><input type="checkbox" id="addEmbedMetadata" checked> 嵌入元数据</label>
+          <label class="form-label form-label-inline"><input type="checkbox" id="addWriteSubs"> 下载字幕</label>
+          <label class="form-label form-label-inline"><input type="checkbox" id="addWriteThumbnail" checked> 下载缩略图</label>
+          <label class="form-label form-label-inline"><input type="checkbox" id="addNoPlaylist"> 仅单视频</label>
         </div>
       </details>
     </div>

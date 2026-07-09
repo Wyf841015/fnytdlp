@@ -4,17 +4,33 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 :root, html[data-theme='dark'] {
-  /* Brand — Warm Amber/Orange (非 AI 色) */
-  --brand-h: 30;
-  --brand-s: 75%;
-  --brand-l: 50%;
+  /* Brand — Indigo-Blue (科技感冷色系) */
+  --brand-h: 220;
+  --brand-s: 100%;
+  --brand-l: 60%;
+  --brand-cyan-h: 170;
+  --brand-cyan-s: 100%;
+  --brand-cyan-l: 42%;
+  --brand-gold-h: 45;
+  --brand-gold-s: 100%;
+  --brand-gold-l: 50%;
 
-  /* Derived accent colors */
+  /* Derived accent colors — 亮蓝 */
   --accent: hsl(var(--brand-h), var(--brand-s), var(--brand-l));
   --accent-hover: hsl(var(--brand-h), var(--brand-s), calc(var(--brand-l) - 8%));
-  --accent-muted: hsl(30, 35%, 22% / 0.45);
-  --accent-glow: hsl(30, 75%, 50% / 0.15);
-  --accent-border: hsl(30, 35%, 38% / 0.5);
+  --accent-muted: hsl(220, 50%, 35% / 0.35);
+  --accent-glow: hsl(220, 100%, 60% / 0.15);
+  --accent-border: hsl(220, 50%, 50% / 0.5);
+
+  /* 青绿 (secondary accent) */
+  --accent-cyan: hsl(var(--brand-cyan-h), var(--brand-cyan-s), var(--brand-cyan-l));
+  --accent-cyan-muted: hsl(170, 50%, 30% / 0.3);
+  --accent-cyan-glow: hsl(170, 100%, 42% / 0.15);
+
+  /* 暖金 (点缀色) */
+  --accent-gold: hsl(var(--brand-gold-h), var(--brand-gold-s), var(--brand-gold-l));
+  --accent-gold-muted: hsl(45, 50%, 35% / 0.3);
+  --accent-gold-glow: hsl(45, 100%, 50% / 0.15);
 
   /* Aliases (兼容 components.css/layout.css 旧引用) */
   --color-primary: hsl(var(--brand-h), var(--brand-s), var(--brand-l));
@@ -61,7 +77,7 @@
   --shadow: 0 4px 12px hsl(0, 0%, 0% / 0.5);
   --shadow-md: 0 8px 24px hsl(0, 0%, 0% / 0.6);
   --shadow-lg: 0 16px 48px hsl(0, 0%, 0% / 0.7);
-  --shadow-accent: 0 4px 20px hsl(30, 75%, 50% / 0.2);
+  --shadow-accent: 0 4px 20px hsl(220, 100%, 60% / 0.2);
 
   /* Border radii */
   --radius-xs: 4px;
@@ -112,11 +128,11 @@ html[data-theme='light'] {
   --shadow: 0 4px 12px hsl(220, 4%, 40% / 0.08);
   --shadow-md: 0 8px 24px hsl(220, 4%, 35% / 0.06);
   --shadow-lg: 0 16px 48px hsl(220, 4%, 30% / 0.04);
-  --shadow-accent: 0 4px 20px hsl(30, 75%, 50% / 0.12);
+  --shadow-accent: 0 4px 20px hsl(220, 100%, 60% / 0.12);
 
-  --accent-muted: hsl(30, 40%, 70% / 0.2);
-  --accent-glow: hsl(30, 75%, 50% / 0.1);
-  --accent-border: hsl(30, 50%, 45%);
+  --accent-muted: hsl(220, 50%, 55% / 0.2);
+  --accent-glow: hsl(220, 100%, 60% / 0.1);
+  --accent-border: hsl(220, 60%, 45%);
 }
 
 /* ===== Smooth Scrollbar ===== */
