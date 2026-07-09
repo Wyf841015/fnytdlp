@@ -1043,6 +1043,73 @@ html[data-theme='light'] .toast.info {
 }
 
 /* ===== fnytdlp 特定样式 ===== */
+/* 视频信息卡片 (info preview) */
+.info-card {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+}
+.info-thumb {
+  width: 120px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  background: var(--bg-hover);
+}
+.info-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.info-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.info-uploader {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.info-duration {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+.info-formats {
+  font-size: 0.78rem;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* footer-icon */
+.footer-icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+/* modal-header-actions (播放器) */
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 订阅列表操作栏 */
+.sub-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
 .yt-logo {
   width: 32px; height: 32px;
   background: linear-gradient(135deg, hsl(220, 100%, 60%), hsl(200, 100%, 45%));
