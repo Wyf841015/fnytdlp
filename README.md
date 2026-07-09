@@ -297,20 +297,20 @@ node --test tests/test_progress_aggregator.js  # 多流进度聚合 (12 个)
 
 ## 更新日志
 
-### v0.2.0 (2026-06-10)
-- fix: Destination 封面图过滤（实时解析 + 旧任务兜底）
-- fix: toolbar 清理按钮加 showConfirm 确认框
-- fix: 赞助大图点击不放大（inline onclick this 关键字修复）
+### v0.3.0 (2026-07-09)
+- UI 品牌色重绘：暖橙→亮蓝+青绿+暖金科技冷色系
+- 搜索栏与筛选标签合并为一行（inline search）
+- 任务卡片重排：状态徽章移入标题行，meta 行紧凑分隔
+- 添加任务弹窗改进：URL 卡片化+实时验证+格式 pills
+- 空状态增强：光晕动效+快捷键提示
+- prefers-reduced-motion 动效尊重（系统级无障碍）
+- 按钮加载态：submitAddTask 防双击
+- 移动端 touch target ≥ 44px
+- 语义化标题层级（h1/h2）
+- 搜索无结果/错误恢复提示
+- 主题覆盖全面修复（12 处老配色/缺失类）
 
-### v0.1.0 (2026-06-09)
-- 集成 yt-dlp 1872+ 站点支持
-- 自适应 x86_64 + aarch64 双 binary
-- KPI Dashboard + Sparkline 实时趋势
-- SSE 实时进度推送
-- 任务详情弹窗 13 字段
-- 下载路径浏览对话框
-- 多网站 Cookie 任务级透传
-- SponsorBlock 广告跳过
-- 5 主题 + 响应式布局
-- 20+ TDD 测试套件
-- sparkline ESM 加载修复 / Speed KPI 换行修复 / pipeThrough TypeError 修复
+### v0.2.4 (2026-07-07)
+- 性能优化: SSE 增量更新(HTTP请求~80%减少) / 后备轮询 5s→30s
+- serveStatic 流式发送 >512KB 文件用 createReadStream
+- 删除重复 yt-dlp 版本检查 / 内联 CSS 迁移到组件文件
