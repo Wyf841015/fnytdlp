@@ -25,7 +25,7 @@
 
 ### 在 FnOS 应用中心安装
 
-1. 下载 `fnytdlp.fpk`（约 6.3 MB）
+1. 下载 `fnytdlp.fpk`（约 6.3 MB，v0.3.1）
 2. 在飞牛NAS应用中心 → 手动安装
 3. 首次进入"设置"，配置下载路径（建议 `/vol2/1000/fnytdlp/`）
 4. 点"+"粘贴视频链接开始下载
@@ -80,6 +80,54 @@ YouTube 会员 / B 站大会员等需要登录才能看的视频：
 - SSE 实时推送：进度变化无延迟，配合 2s 轮询兜底
 - 速度小图：6 个采样点滑动窗口绘制（Sparkline）
 
+## 频道订阅
+
+自动监控 YouTube 频道 / B 站 UP 主 / 播放列表等，定时拉取新视频并加入下载队列。
+
+### 表格化订阅管理（v0.3.1）
+
+订阅列表从横向 chip 改为**表格形式**，每行清晰展示：
+
+| | 名称 | URL | Cookie | 间隔 | 格式 | 最新ID | 操作 |
+|---|------|-----|--------|------|------|--------|------|
+| 开关 | 频道名 | https://youtube.com/@xxx | cookie-name | 60 分钟 | bv*+ba/b | 上次下载的 id | 🔍 立即检查 / 🗑 删除 |
+
+- **iOS 风格开关**：绿色 = 启用，灰色 = 暂停，暂停时整行 0.55 opacity 灰显
+- **每行独立检查**：点击 🔍 跳过 5 分钟节流立即检查该订阅（其他订阅不受影响）
+- **增量下载**：基于 `lastId` + 时间窗口双保险，只下载新内容不重下历史
+- **数据校验**：item.url 为空时 LOG 跳过，避免静默重新下载整个 playlist
+
+### 增量下载策略（v0.3.1）
+
+```
+新内容 = 时间戳 > 上次检查时间 的项
+兜底：lastId 失效（视频被删/下架）→ 自动切到时间窗口
+```
+
+| 策略 | 触发 | 行为 |
+|------|------|------|
+| **lastId 命中** | 频道里能找到上次下载的 id | 取 lastId 之前的全部 = 新内容 |
+| **时间窗口兜底** | lastId 找不到（视频被删） | cutoff = lastCheckAt - 1h，保留 > cutoff 的项 |
+| **id 去重** | yt-dlp 返回重复项 | 按 videoId 去重，避免重复加任务 |
+| **URL 校验** | dump-json 拿不到完整 url | 跳过该条并 LOG，避免 fallback 到 playlist URL 引发重下 |
+
+### 添加订阅
+
+1. 点 🔔 订阅按钮 → 在弹窗"添加新订阅"折叠区填：
+   - 频道名称（任意）
+   - 频道 URL（YouTube `@xxx`、B 站 UP 主主页、播放列表）
+   - Cookie（可选，已保存的 cookie 名称）
+   - 检查间隔（30 分钟/1 小时/2 小时/6 小时/24 小时）
+   - 格式（可选，留空用全局默认）
+2. 点 💾 保存订阅，自动加入检查队列
+3. 每 5 分钟（fnOS 内置 cron）自动检查所有启用的订阅
+
+### 常见场景
+
+- **大频道 1000+ 视频**：默认 `--playlist-end 500` 限制单次取 500 项 + 时间窗口兜底，避免重下历史
+- **视频被上传者删除**：lastId 失效自动切时间窗口，不会卡死
+- **重复添加同名订阅**：后端去重（同名/同 URL 覆盖），保留运行时字段（enabled/lastId/addedAt）
+
 ## 项目结构
 
 ```
@@ -129,6 +177,9 @@ fnytdlp/
 | `/api/parse` | GET | 解析视频 URL 提取元数据 |
 | `/api/browse` | GET | 浏览目录（白名单子目录列表） |
 | `/api/cookies` | GET/POST/DELETE | Cookie 多文件管理 |
+| `/api/subscriptions` | GET/POST | 订阅列表/保存（POST 含 toggle enabled） |
+| `/api/subscriptions/:name` | DELETE | 删除订阅 |
+| `/api/subscriptions/check` | POST | 手动触发订阅检查（body 可选 `{name}` 单订阅） |
 | `/api/events` | GET | SSE 实时进度推送 |
 | `/api/progress` | GET | 任务进度（保留兼容） |
 
@@ -296,6 +347,36 @@ node --test tests/test_progress_aggregator.js  # 多流进度聚合 (12 个)
 > 本应用打包了 [yt-dlp](https://github.com/yt-dlp/yt-dlp)（Unlicense 公共领域），保留完整 LICENSE 文本。
 
 ## 更新日志
+
+### v0.3.1 (2026-07-10)
+
+**订阅功能增强 & 增量逻辑修复**
+
+订阅 UI 重构：
+- 订阅列表从横向 chip 改为**表格形式**（8 列：开关/名称/URL/Cookie/间隔/格式/最新ID/操作）
+- **iOS 风格开关**（绿色=启用/灰色=暂停），暂停时整行 0.55 opacity 灰显
+- 每行独立 **🔍 立即检查**按钮（绕过 5 分钟节流）
+- 删除按钮 hover 红色高亮
+
+订阅增量逻辑修复（5 个 bug）：
+- **lastId 卡死**：lastId 对应视频被删/下架时找不到了，原逻辑把所有项当新内容，lastId 永远卡死 → 修复为 fallback 到时间窗口
+- **多页列表重下**：大频道 1000+ 视频时 playlist 只显示前 100，原逻辑会把 lastId 之前所有项当"新" → 时间窗口兜底只保留 lastCheckAt 之后的项
+- **顺序假设**：`--playlist-reverse` 在新版 yt-dlp 被忽略 → 改用 timestamp 字段（timestamp/release_timestamp/upload_date）主动排序
+- **重复添加**：yt-dlp flat-playlist 偶尔返回重复 id → 按 id 去重
+- **URL 兜底重下**：item.url 为空时 fallback 到订阅 URL → 改为 LOG 跳过，避免静默重下整个 playlist
+
+订阅后端 bug 修复：
+- `POST /api/subscriptions` 之前会强制把已有订阅 `enabled` 重置为 `true`（toggleSubscription 失效） → 修复为新建用默认，已有保留原 `enabled/lastId/addedAt`
+- 新增 `parseBodySafe` 容错版（空 body 返 `{}` 而非 reject）
+
+新增功能：
+- `POST /api/subscriptions/check` body 支持 `{name}` 单订阅检查
+- 单订阅检查强制绕过 `interval` 节流，立即生效
+- `sub._lastCheckAt` 记录时间窗口 fallback 用时间戳
+- `--playlist-end 500` 限制单次最多取 500 项（大频道保护）
+- getLatestIds timeout 30s → 60s
+
+单元测试：新增 9 个增量逻辑测试（首次检查 / lastId 命中 / lastId 失效 fallback / 时间窗口边界 / 去重 / 顺序）
 
 ### v0.3.0 (2026-07-09)
 - UI 品牌色重绘：暖橙→亮蓝+青绿+暖金科技冷色系
