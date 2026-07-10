@@ -1411,26 +1411,71 @@ const loadSubscriptions = async () => {
     const r = await API.get('/api/subscriptions');
     _subscriptions = (r && r.subscriptions) || [];
     if (_subscriptions.length === 0) {
-      list.innerHTML = '<div class="form-hint" style="padding:12px;text-align:center">暂无订阅, 在上方添加</div>';
+      list.innerHTML = '<div class="sub-empty">📭 暂无订阅, 在下方表单添加第一个订阅</div>';
       return;
     }
-    list.innerHTML = _subscriptions.map(s => `
-      <div class="cookie-chip sub-chip">
-        <span class="sub-status ${s.enabled ? 'active' : ''}">${s.enabled ? '🔔' : '🔕'}</span>
-        <strong>${esc(s.name)}</strong>
-        <span class="chip-domain">${esc(s.url.substring(0, 50))}${s.url.length > 50 ? '…' : ''}</span>
-        <span class="chip-domain">每 ${Math.round((s.interval || 3600) / 60)} 分钟</span>
-        ${s.lastId ? `<span class="chip-domain">最新: ${esc(s.lastId)}</span>` : ''}
-        <span class="sub-actions">
-          <button class="chip-del" title="${s.enabled ? '暂停' : '启用'}" onclick="toggleSubscription('${esc(s.name)}')">${s.enabled ? '⏸' : '▶'}</button>
-          <button class="chip-del" title="删除" onclick="deleteSubscription('${esc(s.name)}')">×</button>
-        </span>
-      </div>
-    `).join('');
+    list.innerHTML = `<table class="sub-table">
+      <thead>
+        <tr>
+          <th style="width:32px"></th>
+          <th>名称</th>
+          <th>URL</th>
+          <th>Cookie</th>
+          <th>间隔</th>
+          <th>格式</th>
+          <th>最新ID</th>
+          <th style="width:110px">操作</th>
+        </tr>
+      </thead>
+      <tbody>${_subscriptions.map(s => renderSubRow(s)).join('')}</tbody>
+    </table>`;
   } catch (e) {
-    list.innerHTML = '<div class="form-hint" style="padding:12px;text-align:center;color:var(--color-danger)">加载失败: ' + esc(e.message) + '</div>';
+    list.innerHTML = '<div class="sub-empty" style="color:var(--color-danger)">加载失败: ' + esc(e.message) + '</div>';
   }
 };
+
+const renderSubRow = (s) => {
+  const intervalMin = Math.round((s.interval || 3600) / 60);
+  const fullUrl = s.url || '';
+  const urlDisplay = fullUrl.length > 50 ? fullUrl.substring(0, 48) + '…' : fullUrl;
+  const cookieDisplay = s.cookieName ? esc(s.cookieName) : '<span style="color:var(--text-dim)">—</span>';
+  const formatDisplay = s.format ? esc(s.format) : '<span style="color:var(--text-dim)">默认</span>';
+  const lastIdDisplay = s.lastId ? esc(String(s.lastId).substring(0, 20)) : '<span style="color:var(--text-dim)">—</span>';
+  return `<tr class="sub-row${s.enabled ? '' : ' sub-disabled'}" data-name="${esc(s.name)}">
+    <td>
+      <button class="sub-toggle ${s.enabled ? 'on' : 'off'}" title="${s.enabled ? '已启用, 点击暂停' : '已暂停, 点击启用'}" onclick="toggleSubscription('${esc(s.name)}')" aria-label="切换启用状态">
+        <span class="sub-toggle-dot"></span>
+      </button>
+    </td>
+    <td><strong>${esc(s.name)}</strong></td>
+    <td class="sub-url" title="${esc(fullUrl)}">${esc(urlDisplay)}</td>
+    <td>${cookieDisplay}</td>
+    <td class="sub-interval">${intervalMin} 分钟</td>
+    <td class="sub-format" title="${s.format ? esc(s.format) : ''}">${formatDisplay}</td>
+    <td class="sub-lastid" title="${s.lastId ? esc(String(s.lastId)) : ''}">${lastIdDisplay}</td>
+    <td class="sub-row-actions">
+      <button class="btn-icon-sm sub-action-btn" title="立即检查此订阅" onclick="checkOneSubscription('${esc(s.name)}')" aria-label="检查">🔍</button>
+      <button class="btn-icon-sm sub-action-btn sub-action-del" title="删除订阅" onclick="deleteSubscription('${esc(s.name)}')" aria-label="删除">🗑</button>
+    </td>
+  </tr>`;
+};
+
+// 立即检查单个订阅（轮询时也能用）
+const checkOneSubscription = async (name) => {
+  const result = $('subCheckResult');
+  if (result) result.textContent = `⏳ 检查 "${name}"...`;
+  try {
+    const r = await API.post('/api/subscriptions/check', { name });
+    const count = (r && r.results && r.results.length) || 0;
+    if (result) result.textContent = `✅ "${name}" 检查完成, 新增 ${count} 条任务`;
+    toast(`"${name}" 检查完成, ${count} 个新任务`, count > 0 ? 'success' : 'info');
+    if (count > 0) await loadTasks();
+  } catch (e) {
+    if (result) result.textContent = '❌ ' + e.message;
+    toast('检查失败: ' + e.message, 'error');
+  }
+};
+window.checkOneSubscription = checkOneSubscription;
 
 const saveSubscription = async () => {
   const name = $('subName').value.trim();

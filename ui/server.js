@@ -164,16 +164,19 @@ LOG('detected arch=' + ARCH + ' (process.arch=' + process.arch + ')');
 
 // ── 订阅检查 ─────────────────────────────────────────────────
 const _subCheckRunning = { current: false };
-const checkSubscriptions = async () => {
+const checkSubscriptions = async (targetName) => {
   if (_subCheckRunning.current) { LOG('[sub] check already running, skip'); return []; }
   _subCheckRunning.current = true;
   const subs = config.subscriptions || [];
   const results = [];
   try {
     for (const sub of subs) {
+      // 指定单订阅时跳过其他
+      if (targetName && sub.name !== targetName) continue;
       if (!sub.enabled) continue;
+      // 单订阅强制检查（绕过 interval 节流）；全局检查走节流
       const lastCheck = sub._lastCheck || 0;
-      if (Date.now() - lastCheck < (sub.interval || 3600) * 1000) continue;
+      if (!targetName && Date.now() - lastCheck < (sub.interval || 3600) * 1000) continue;
       LOG('[sub] checking:', sub.name, sub.url);
       try {
         const newIds = await getLatestIds(sub.url, sub.cookieName, sub.lastId);
@@ -1433,12 +1436,22 @@ const handle = async (req, res) => {
       const subs = config.subscriptions || [];
       // 去重: 同名或同URL覆盖
       const idx = subs.findIndex(s => s.name === name || s.url === url);
-      const entry = { url, name, cookieName: cookieName || '', format: format || '', interval: parseInt(interval) || 3600, lastId: '', enabled: true, addedAt: Date.now() };
-      if (idx >= 0) { subs[idx] = { ...subs[idx], ...entry }; }
-      else { subs.push(entry); }
+      // 新建时默认 enabled=true；已存在时保留原有 enabled/lastId/addedAt 等运行时字段
+      const isNew = idx < 0;
+      const entry = {
+        url, name,
+        cookieName: cookieName || '',
+        format: format || '',
+        interval: parseInt(interval) || 3600,
+        lastId: isNew ? '' : (subs[idx].lastId || ''),
+        enabled: isNew ? true : (subs[idx].enabled !== false),
+        addedAt: isNew ? Date.now() : (subs[idx].addedAt || Date.now())
+      };
+      if (isNew) { subs.push(entry); }
+      else { subs[idx] = { ...subs[idx], ...entry }; }
       config.subscriptions = subs;
       saveConfig();
-      LOG('[sub] added subscription:', name, url);
+      LOG('[sub]', isNew ? 'added' : 'updated', 'subscription:', name, url);
       sendJSON(res, 200, { ok: true, subscriptions: config.subscriptions });
     }
     else if (pathname.startsWith('/api/subscriptions/') && req.method === 'DELETE') {
@@ -1448,8 +1461,10 @@ const handle = async (req, res) => {
       sendJSON(res, 200, { ok: true, subscriptions: config.subscriptions });
     }
     else if (pathname === '/api/subscriptions/check' && req.method === 'POST') {
-      // 手动触发一次订阅检查, 返回新内容数量
-      const results = await checkSubscriptions();
+      // 手动触发一次订阅检查：body 可选 {name} 指定单个，否则检查所有启用的
+      const body = await parseBodySafe(req).catch(() => ({}));
+      const targetName = body && body.name;
+      const results = await checkSubscriptions(targetName);
       sendJSON(res, 200, { ok: true, results });
     }
     // ── cookies (多网站管理) ──
@@ -1501,6 +1516,8 @@ const handle = async (req, res) => {
   }
 };
 
+// parseBody 容错版：空 body 返 {} 而非 reject
+const parseBodySafe = (req) => parseBody(req).then(b => b || {}).catch(() => ({}));
 const parseBody = (req) => new Promise((resolve, reject) => {
   let body = '';
   let bytes = 0;

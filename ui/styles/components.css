@@ -1104,11 +1104,119 @@ html[data-theme='light'] .toast.info {
   gap: 6px;
 }
 
-/* 订阅列表操作栏 */
-.sub-actions {
+/* 订阅表格列表 */
+.sub-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: var(--fs);
+  background: var(--bg-alt);
+  border-radius: var(--radius);
+  border: 1px dashed var(--border);
+}
+.sub-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.sub-table thead th {
+  background: var(--bg-alt);
+  padding: 10px 12px;
+  text-align: left;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-dim);
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+  cursor: default;
+}
+.sub-table thead th:hover { color: var(--text-dim); background: var(--bg-alt); }
+.sub-table tbody tr {
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background-color var(--t-fast);
+}
+.sub-table tbody tr:last-child { border-bottom: none; }
+.sub-table tbody tr:hover { background: var(--bg-alt); }
+.sub-table td {
+  padding: 10px 12px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.sub-table .sub-row.sub-disabled { opacity: 0.55; }
+.sub-table .sub-row.sub-disabled td { color: var(--text-dim); }
+
+.sub-toggle {
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  border: none;
+  background: var(--border);
+  position: relative;
+  cursor: pointer;
+  transition: background-color var(--t-fast);
+  padding: 0;
+  flex-shrink: 0;
+}
+.sub-toggle.on { background: var(--color-success); }
+.sub-toggle .sub-toggle-dot {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--t-fast);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.sub-toggle.on .sub-toggle-dot { transform: translateX(16px); }
+
+.sub-url {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+.sub-interval, .sub-format, .sub-lastid {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+.sub-lastid {
+  font-family: var(--font-mono);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sub-row-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.sub-action-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
+  transition: all var(--t-fast);
+}
+.sub-action-btn:hover { background: var(--bg-alt); border-color: var(--text-dim); }
+.sub-action-del:hover { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }
+@media (max-width: 768px) {
+  .sub-table { font-size: 12px; }
+  .sub-table thead th, .sub-table td { padding: 8px; }
+  .sub-url { max-width: 140px; }
 }
 .yt-logo {
   width: 32px; height: 32px;
