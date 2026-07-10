@@ -179,16 +179,28 @@ const checkSubscriptions = async (targetName) => {
       if (!targetName && Date.now() - lastCheck < (sub.interval || 3600) * 1000) continue;
       LOG('[sub] checking:', sub.name, sub.url);
       try {
-        const newIds = await getLatestIds(sub.url, sub.cookieName, sub.lastId);
-        if (newIds.length > 0) {
-          LOG('[sub] found', newIds.length, 'new items for', sub.name);
-          sub.lastId = newIds[0].id;
-          for (const item of newIds) {
+        // lastCheckAt 用作时间窗口 fallback（hour-ago）
+        const lastCheckAt = sub._lastCheck || sub.addedAt || 0;
+        const { items: newItems, total, usedFallback } = await getLatestIds(sub.url, sub.cookieName, sub.lastId, lastCheckAt);
+        if (usedFallback) {
+          LOG('[sub] lastId not found in', total, 'items, fallback to time window for', sub.name);
+        }
+        if (newItems.length > 0) {
+          LOG('[sub] found', newItems.length, 'new items for', sub.name);
+          // 更新 lastId 为最新一项（items 已按升序，最后一项是最新）
+          const newest = newItems[newItems.length - 1];
+          sub.lastId = newest.id;
+          for (const item of newItems) {
             try {
+              if (!item.url) {
+                // Bug 5 修复：不 fallback 到订阅 URL，避免重新下载整个 playlist
+                LOG('[sub] skip item without url: id=' + item.id);
+                continue;
+              }
               const opts = {};
               if (sub.cookieName) opts.cookieName = sub.cookieName;
               if (sub.format) opts.format = sub.format;
-              const task = await parseAndCreateTask(item.url || sub.url, opts);
+              const task = await parseAndCreateTask(item.url, opts);
               results.push({ name: sub.name, title: item.title || item.id, taskId: task.id });
             } catch (e) {
               LOG('[sub] createTask failed for', item.id, e.message);
@@ -196,6 +208,7 @@ const checkSubscriptions = async (targetName) => {
           }
         }
         sub._lastCheck = Date.now();
+        sub._lastCheckAt = sub._lastCheck;  // 记录时间窗口 fallback 用的时间戳
       } catch (e) {
         LOG('[sub] check failed for', sub.name, e.message);
       }
@@ -207,9 +220,16 @@ const checkSubscriptions = async (targetName) => {
   return results;
 };
 
-const getLatestIds = (url, cookieName, lastId) => {
+// 时间窗口增量策略：
+//   1) 优先用 lastId（最准，匹配 id 立即停止）
+//   2) lastId 失效时（视频被删/下架/换 id）→ fallback 到时间窗口：
+//      保留 _lastCheckAt 之前 1 小时的项作为安全余量（避免时区/解析误差漏掉边界）
+//   3) 输出按时间倒序（最新→最旧），newItems 为本次应新增的（最旧→最新，方便按顺序入队）
+//   4) newItems 按 id 去重
+//   5) item.url 为空时 throw，让上层记录错误而非 silent 重新下载整个 playlist
+const getLatestIds = (url, cookieName, lastId, lastCheckAt) => {
   return new Promise((resolve, reject) => {
-    const args = ['--flat-playlist', '--dump-json', '--no-warnings', '--playlist-reverse'];
+    const args = ['--flat-playlist', '--dump-json', '--no-warnings', '--playlist-reverse', '--playlist-start', '1', '--playlist-end', '500'];
     if (cookieName && config.cookies && config.cookies.some(c => c.name === cookieName)) {
       const fp = getCookieFile(cookieName);
       if (fs.existsSync(fp)) args.push('--cookies', fp);
@@ -217,7 +237,7 @@ const getLatestIds = (url, cookieName, lastId) => {
     args.push(url);
     const proc = spawn(YT_DLP_BIN, args, {
       env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' },
-      timeout: 30000,
+      timeout: 60000,
     });
     let out = '', err = '';
     proc.stdout.on('data', c => out += c);
@@ -225,22 +245,63 @@ const getLatestIds = (url, cookieName, lastId) => {
     const timer = setTimeout(() => {
       try { proc.kill('SIGTERM'); } catch (e) {}
       reject(new Error('timeout'));
-    }, 30000);
+    }, 60000);
     proc.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0) return reject(new Error(err.trim() || `exit ${code}`));
-      const lines = out.trim().split('\n').filter(Boolean).reverse();
-      const newItems = [];
-      let foundOld = false;
-      for (const line of lines) {
+
+      // 解析所有条目，按 timestamp 倒序（最新→最旧）
+      const items = [];
+      for (const line of out.trim().split('\n').filter(Boolean)) {
         try {
           const e = JSON.parse(line);
-          if (foundOld || e._type === 'playlist') continue;
-          if (lastId && e.id === lastId) { foundOld = true; continue; }
-          newItems.push({ id: e.id, title: e.title, url: e.url || e.webpage_url || '' });
-        } catch (e) { /* skip */ }
+          if (e._type === 'playlist') continue;   // 跳过 playlist 元数据本身
+          if (!e.id) continue;
+          // 解析时间戳（多种来源兼容）
+          let ts = 0;
+          if (typeof e.timestamp === 'number') ts = e.timestamp;
+          else if (typeof e.release_timestamp === 'number') ts = e.release_timestamp;
+          else if (e.upload_date && /^\d{8}$/.test(e.upload_date)) {
+            const s = e.upload_date;
+            ts = Math.floor(Date.UTC(+s.slice(0,4), +s.slice(4,6)-1, +s.slice(6,8)) / 1000);
+          }
+          items.push({ id: e.id, title: e.title || '', url: e.url || e.webpage_url || '', _ts: ts });
+        } catch (e) { /* skip parse error */ }
       }
-      resolve(newItems);
+      // 按 timestamp 倒序（无 ts 的排后面）
+      items.sort((a, b) => b._ts - a._ts);
+
+      // 增量判断：lastId 优先；找不到时用时间窗口
+      let newItems = [];
+      let usedFallback = false;
+      const lastIdIdx = lastId ? items.findIndex(i => i.id === lastId) : -1;
+
+      if (lastId && lastIdIdx >= 0) {
+        // 主路径：lastId 找到了
+        newItems = items.slice(0, lastIdIdx);
+      } else if (lastId) {
+        // lastId 设置了但找不到 → fallback 到时间窗口
+        usedFallback = true;
+        const cutoff = (lastCheckAt || 0) - 3600;  // 安全余量 -1h
+        newItems = items.filter(i => i._ts > cutoff || (cutoff === 0 && i._ts === 0));
+      } else {
+        // 从未检查过 → 不应该调到这里（外层会跳过），但兜底
+        newItems = items;
+      }
+
+      // 按 id 去重（同一 videoId 多次出现）
+      const seen = new Set();
+      newItems = newItems.filter(i => {
+        if (seen.has(i.id)) return false;
+        seen.add(i.id);
+        return true;
+      });
+
+      // 按 timestamp 升序返回（最旧→最新），方便顺序入队处理
+      newItems.sort((a, b) => a._ts - b._ts);
+
+      LOG('[sub] getLatestIds: total=' + items.length + ', new=' + newItems.length + ', usedFallback=' + usedFallback);
+      resolve({ items: newItems, total: items.length, usedFallback });
     });
     proc.on('error', reject);
   });
