@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { applyLine as _applyProgressLine, newTask as _newProgressTask } from './util/progress-aggregator.js';
 
 // ── version (保持与 manifest 一致 ────────────────────────────────────────
-const VERSION = '0.5.0';
+const VERSION = '0.6.0';
 // ── paths ──────────────────────────────────────────────────────────────
 const PKGVAR    = process.env.TRM_PKGVAR || process.env.TRIM_PKGVAR || null;
 const APPDEST   = process.env.TRIM_APPDEST || null;
@@ -493,6 +493,15 @@ const DEFAULT_CONFIG = {
   recodeFormat: '',                 // --recode-video-format 限定容器
   // v0.5.0: yt-dlp 启动时自动检查更新 (提示用户, 不自动升级)
   checkYtDlpUpdate: false,
+  // v0.6.0: AI 视频总结 (借鉴 uvd, 零运行时依赖用 Node 内置 fetch)
+  // 配置可走 process.env 也可走 fnOS Web 界面填的字段
+  aiEnabled: false,                // 总开关 (避免用户没配 API key 时误触发)
+  aiProvider: 'custom',            // 'openai' / 'glm' / 'deepseek' / 'custom'
+  aiBaseUrl: '',                   // 例: https://open.bigmodel.cn/api/paas/v4
+  aiApiKey: '',                    // API key (环境变量 AI_API_KEY 覆盖)
+  aiModel: 'gpt-3.5-turbo',        // 默认模型
+  aiMaxTokens: 4000,
+  aiTemperature: 0.3,
   // v0.5.0: 速度限制模板 (按时段自动切换, JSON: [{"start":"22:00","end":"07:00","limit":"10M"},{"start":"07:00","end":"22:00","limit":""}])
   // 空数组 = 不启用; 当前时间在 [start,end) 内使用对应 limit
   speedSchedule: [],
@@ -618,6 +627,30 @@ const isValidUrl = (url) => {
     const u = new URL(url);
     return u.protocol === 'http:' || u.protocol === 'https:';
   } catch (e) { return false; }
+};
+
+// v0.6.0: URL 预处理 (借鉴 uvd) — 把平台特殊 URL 转为标准格式
+// 抖音: /jingxuan?modal_id=XXX / /note/XXX → /video/XXX
+// 短链接 (v.douyin.com) yt-dlp 内部已 follow redirect, 不需要处理
+const normalizeUrl = (url) => {
+  if (!url || typeof url !== 'string') return url;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    // 抖音精选页 → 标准 video URL
+    if (host === 'www.douyin.com' || host === 'douyin.com') {
+      const m = u.pathname.match(/^\/(\w+)$/);
+      if (m && u.searchParams.get('modal_id')) {
+        return `https://www.douyin.com/video/${u.searchParams.get('modal_id')}`;
+      }
+      // 笔记页 → video URL (抖音笔记内容就是 video)
+      const note = u.pathname.match(/^\/note\/(\d+)/);
+      if (note) {
+        return `https://www.douyin.com/video/${note[1]}`;
+      }
+    }
+    return url;
+  } catch (e) { return url; }
 };
 
 // ── path whitelist (下载路径必须在合理的系统路径下) ──────────
@@ -981,6 +1014,13 @@ const startTask = (id) => {
       const beforeProgress = task.progress;
       const beforeFilename = task.filename;
       _applyProgressLine(task, line);
+      // v0.6.0: 速度历史采样 (任务详情 modal 渲染速度曲线)
+      if (typeof task.speed === 'number' && task.speed >= 0) {
+        if (!task._speedHistory) task._speedHistory = [];
+        task._speedHistory.push({ t: Date.now(), bps: task.speed, p: task.progress || 0 });
+        // 上限 200 个采样点 (避免内存爆掉)
+        if (task._speedHistory.length > 200) task._speedHistory.shift();
+      }
       if (task.progress !== beforeProgress || task.filename !== beforeFilename) {
         task.updatedAt = Date.now();
         if (task._phase === 'merging') {
@@ -1114,6 +1154,7 @@ const retryTask = (id) => {
 
 // ── parseAndCreateTask: 先解析再建文件夹+info.txt, 然后开始下载 ──────────
 const parseAndCreateTask = async (url, options = {}) => {
+  url = normalizeUrl(url);  // v0.6.0: 抖音 modal_id/note URL 转标准格式
   let title = '';
   let rawInfo = null;
   // 0. 配额自动清理 (quotaAutoClean=true 且 quotaBytes>0 时, 先清理旧任务腾空间)
@@ -1348,6 +1389,7 @@ const listPlaylist = (url, cookieName) => {
 // ── /api/info (调用 yt-dlp --dump-json 解析单 URL 元数据) ──────────
 const infoUrl = (url, cookieName) => {
   return new Promise((resolve, reject) => {
+    url = normalizeUrl(url);  // v0.6.0
     if (!isValidUrl(url)) return reject(new Error('Invalid URL'));
     const args = ['--dump-json', '--no-download', '--no-warnings'];
     // Cookie support for parsing
@@ -1581,7 +1623,7 @@ const handle = async (req, res) => {
       sendJSON(res, 200, { tasks: listTasks() });
     } else if (pathname === '/api/tasks' && req.method === 'POST') {
       const body = await parseBody(req);
-      const url = body.url?.trim();
+      const url = normalizeUrl(body.url?.trim());  // v0.6.0: 抖音 modal_id/note 转标准
       if (!url) return sendJSON(res, 400, { error: 'url is required' });
       if (!isValidUrl(url)) return sendJSON(res, 400, { error: `Invalid URL (only http/https allowed): ${url}` });
       // v0.5.0: archive 查重检测 (--download-archive 启用时)
@@ -1609,7 +1651,190 @@ const handle = async (req, res) => {
         startTask(task.id);
         sendJSON(res, 200, { task });
       }
-    // ── info_content: 读取 info.txt ──
+    // v0.6.0: 字幕 VTT/SRT 转纯文本 (借鉴 uvd subtitle_extractor)
+const _subtitleToText = (content) => {
+  if (!content || typeof content !== 'string') return '';
+  let text = content;
+  // 移除 VTT 头
+  text = text.replace(/^WEBVTT.*?\n\n/s, '');
+  // 移除 TTML/XML 头
+  text = text.replace(/<\?xml.*?\?>/gs, '');
+  text = text.replace(/<tt\b[^>]*>[\s\S]*?<\/tt>/g, '');
+  // VTT 时间戳 (逗号或点分毫秒)
+  text = text.replace(/\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}[^\n]*/g, '');
+  // SRT 序号行
+  text = text.replace(/^\d+\s*$/gm, '');
+  // 移除位置/样式
+  text = text.replace(/(align|position|line|size|color):[^\n<]*/g, '');
+  // HTML 标签
+  text = text.replace(/<[^>]+>/g, '');
+  // { } 内部 YouTube 标记
+  text = text.replace(/\{[^}]*\}/g, '');
+  // 多空行合并
+  text = text.replace(/\n{3,}/g, '\n\n');
+  return text.trim();
+};
+
+// v0.6.0: AI 视频总结模块 (借鉴 uvd ai_summarizer.py)
+// 零运行时依赖: 用 Node 22 内置 fetch 调用 OpenAI 兼容 API
+const AI_PROVIDERS = {
+  openai: { base: 'https://api.openai.com/v1', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'] },
+  glm: { base: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-flash', 'glm-4', 'glm-4-plus', 'glm-4.5-flash'] },
+  deepseek: { base: 'https://api.deepseek.com/v1', models: ['deepseek-chat', 'deepseek-coder'] },
+  custom: { base: '', models: [] },
+};
+const _resolveAIConfig = () => {
+  // 优先级: 进程环境变量 > config 字段
+  const cfg = config || {};
+  const baseUrl = process.env.AI_BASE_URL || cfg.aiBaseUrl || (AI_PROVIDERS[cfg.aiProvider]?.base || '');
+  const apiKey = process.env.AI_API_KEY || cfg.aiApiKey || '';
+  const model = process.env.AI_MODEL || cfg.aiModel || 'gpt-3.5-turbo';
+  return { baseUrl: baseUrl.replace(/\/+$/, ''), apiKey, model, provider: cfg.aiProvider || 'custom' };
+};
+
+const AI_SUMMARY_PROMPT = `你是一个专业的视频内容分析助手。用户会提供视频的字幕文本或文案内容，请根据内容生成以下四个部分。
+
+## 输出格式要求（严格按以下格式输出，每个部分用 ### 开头）
+
+### 智能总结
+用 3-5 句话概括视频的核心内容，让读者快速了解视频讲了什么。
+
+### 章节大纲
+按照视频内容的逻辑顺序，列出主要章节。每个章节用二级标题（##），章节下的要点用无序列表（- 开头）。
+
+### 核心要点
+提取 5-8 个最关键的知识点或观点，每个要点用 **加粗标题** + 简短说明的形式呈现。
+
+### 思维导图
+用 Markdown 嵌套列表的形式呈现内容的层级结构。从核心主题展开，用缩进表示层级关系。格式示例：
+- 核心主题
+  - 分支一
+    - 子要点1
+    - 子要点2
+  - 分支二
+    - 子要点1
+
+请确保：
+- 内容准确，忠于原始文本
+- 语言简洁，结构清晰
+- 适合学习和复习
+- 如果文本内容过短（如少于50字），请基于现有内容尽量总结`;
+
+const _aiTasks = new Map();  // task_id -> {status, progress, result, error, videoTitle}
+
+// v0.6.0: 启动 AI 总结后台任务
+const startAISummary = async (url) => {
+  const taskId = 'ai_' + crypto.randomUUID().slice(0, 8);
+  const t = { taskId, status: 'pending', progress: '准备中...', result: null, error: '', videoTitle: '' };
+  _aiTasks.set(taskId, t);
+  // 后台线程
+  (async () => {
+    try {
+      // 1. 提取字幕 (复用 /api/info 解析, 然后用 yt-dlp --write-subs 临时下载)
+      t.status = 'extracting';
+      t.progress = '正在提取字幕...';
+      const info = await infoUrl(url).catch(() => null);
+      let text = '';
+      let title = (info && info.title) || '';
+      if (info) t.videoTitle = info.title;
+      // 用 yt-dlp 一次性下载字幕到临时目录 (不下载视频)
+      const tmpDir = path.join(os.tmpdir(), 'fnytdlp-ai-' + Date.now());
+      fs.mkdirSync(tmpDir, { recursive: true });
+      try {
+        t.progress = '调用 yt-dlp 提取字幕 (可能需要 10-30s)...';
+        await new Promise((resolve) => {
+          const args = ['--skip-download', '--write-subs', '--write-auto-subs', '--sub-langs', 'zh-Hans,zh-CN,zh,zh-TW,en,en-US,en-GB', '--sub-format', 'vtt/srt/best', '-o', path.join(tmpDir, '%(title)s.%(ext)s'), '--no-warnings', '--no-playlist', url];
+          // 用与 buildYtDlpArgs 一致的 cookie 支持
+          if (config.cookies && Array.isArray(config.cookies) && config.cookies.length) {
+            const matched = config.cookies.find(c => url.includes(c.domain) || c.domain === '');
+            if (matched) {
+              const fp = path.join(DATA_DIR, 'cookies', matched.name + '.txt');
+              if (fs.existsSync(fp)) args.push('--cookies', fp);
+            }
+          }
+          const proc = spawn(YT_DLP_BIN, args, { timeout: 30000 });
+          proc.on('close', () => resolve());
+          proc.on('error', () => resolve());
+        });
+        // 找下载的字幕文件
+        const files = fs.readdirSync(tmpDir).filter(f => /\.(vtt|srt)$/i.test(f));
+        if (files.length > 0) {
+          const raw = fs.readFileSync(path.join(tmpDir, files[0]), 'utf8');
+          text = _subtitleToText(raw);
+        }
+      } finally {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
+      }
+      // fallback: 用 description
+      if (!text && info && info.description && info.description.length >= 20) {
+        text = info.description;
+      }
+      if (!text) {
+        t.status = 'error';
+        t.error = '该视频无可用字幕或文案';
+        t.progress = '提取失败';
+        return;
+      }
+      if (text.length > 12000) text = text.slice(0, 12000);  // 防止超 token
+      // 2. 调用 AI
+      t.status = 'summarizing';
+      t.progress = `AI 总结中 (${text.length} 字)...`;
+      const ai = _resolveAIConfig();
+      if (!ai.apiKey) {
+        t.status = 'error';
+        t.error = 'AI API key 未配置 (请在设置中填 aiApiKey 或设置环境变量 AI_API_KEY)';
+        t.progress = '配置缺失';
+        return;
+      }
+      const resp = await fetch(`${ai.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ai.apiKey}` },
+        body: JSON.stringify({
+          model: ai.model,
+          messages: [
+            { role: 'system', content: AI_SUMMARY_PROMPT },
+            { role: 'user', content: `视频标题：${t.videoTitle || '未知'}\n\n视频内容文本：\n${text}` },
+          ],
+          temperature: parseFloat(config.aiTemperature ?? 0.3),
+          max_tokens: parseInt(config.aiMaxTokens ?? 4000),
+        }),
+      });
+      if (!resp.ok) {
+        const errTxt = await resp.text().catch(() => '');
+        t.status = 'error';
+        t.error = `AI API HTTP ${resp.status}: ${errTxt.slice(0, 200)}`;
+        t.progress = 'AI 失败';
+        return;
+      }
+      const data = await resp.json();
+      const raw = data.choices?.[0]?.message?.content || '';
+      // 3. 解析 4 段
+      const result = { summary: '', outline: '', key_points: '', mind_map: '' };
+      const parts = String(raw).split(/\n*###\s+/);
+      for (const part of parts) {
+        const p = part.trim();
+        if (!p) continue;
+        if (p.startsWith('智能总结') || p.startsWith('总结')) result.summary = p.replace(/^智能总结\s*\n*/, '').trim();
+        else if (p.startsWith('章节大纲') || p.startsWith('大纲')) result.outline = p.replace(/^章节大纲\s*\n*/, '').trim();
+        else if (p.startsWith('核心要点') || p.startsWith('要点')) result.key_points = p.replace(/^核心要点\s*\n*/, '').trim();
+        else if (p.startsWith('思维导图') || p.startsWith('导图')) result.mind_map = p.replace(/^思维导图\s*\n*/, '').trim();
+      }
+      if (!result.summary && !result.outline) result.summary = String(raw).trim();
+            t.result = result;
+      t.status = 'completed';
+      t.progress = '总结完成';
+    } catch (e) {
+      LOG('[ai-summarize]', e.message);
+      t.status = 'error';
+      t.error = e.message;
+      t.progress = '失败';
+    }
+  })();
+  return taskId;
+};
+
+// (AI 端点插入到下面 API 路由链里)
+
     } else if (pathname.match(/^\/api\/tasks\/([^/]+)\/info_content$/) && req.method === 'GET') {
       const id = pathname.split('/')[3];
       const task = getTask(id);
@@ -1621,6 +1846,31 @@ const handle = async (req, res) => {
         if (!fs.existsSync(infoPath)) return sendJSON(res, 404, { error: 'info.txt not found' });
         const content = fs.readFileSync(infoPath, 'utf8');
         sendJSON(res, 200, { content });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
+    // v0.6.0: 字幕提取 (借鉴 uvd) — 读下载目录里 .vtt/.srt 文件并转纯文本
+    else if (pathname.match(/^\/api\/tasks\/([^/]+)\/subtitle$/) && req.method === 'GET') {
+      const id = pathname.split('/')[3];
+      const task = getTask(id);
+      if (!task) return sendJSON(res, 404, { error: 'not found' });
+      const folder = task.options?._downloadFolder || (task.downloadFolder ? path.join(config.downloadPath, task.downloadFolder) : null);
+      if (!folder || !fs.existsSync(folder)) return sendJSON(res, 404, { error: 'folder not found' });
+      try {
+        // 优先级: .vtt > .srt > .lrc > .ass (按语言偏好 zh-Hans/zh/en)
+        const files = fs.readdirSync(folder).filter(f => /\.(vtt|srt)$/i.test(f));
+        if (files.length === 0) return sendJSON(res, 404, { error: 'no subtitle files', hint: '请在设置中启用"下载字幕"或"下载自动字幕"再下载一次' });
+        // 按优先级匹配语言
+        const _PRIORITY = ['zh-Hans', 'zh-CN', 'zh-Hant', 'zh-TW', 'zh', 'en-US', 'en-GB', 'en'];
+        let chosen = files[0];
+        for (const lang of _PRIORITY) {
+          const m = files.find(f => f.includes(`.${lang}.`) || f.includes(`-${lang}.`) || f.endsWith(`.${lang}.vtt`) || f.endsWith(`.${lang}.srt`));
+          if (m) { chosen = m; break; }
+        }
+        const raw = fs.readFileSync(path.join(folder, chosen), 'utf8');
+        const text = _subtitleToText(raw);
+        sendJSON(res, 200, { file: chosen, text, length: text.length });
       } catch (e) {
         sendJSON(res, 500, { error: e.message });
       }
@@ -1852,7 +2102,8 @@ const handle = async (req, res) => {
     }
     else if (pathname === '/api/info' && req.method === 'POST') {
       const body = await parseBody(req);
-      const url = body.url?.trim();
+      const rawUrl = body.url?.trim();
+      const url = normalizeUrl(rawUrl);  // v0.6.0
       if (!url) return sendJSON(res, 400, { error: 'url is required' });
       try {
         const info = await infoUrl(url, body.cookieName);
@@ -1861,9 +2112,73 @@ const handle = async (req, res) => {
         sendJSON(res, 500, { error: e.message });
       }
     }
+    // v0.6.0: AI 总结 (借鉴 uvd) — 3 个端点
+    else if (pathname === '/api/ai/summarize' && req.method === 'POST') {
+      try {
+        const body = await parseBody(req);
+        const url = normalizeUrl((body.url || '').trim());
+        if (!url || !isValidUrl(url)) return sendJSON(res, 400, { error: 'url is required' });
+        const ai = _resolveAIConfig();
+        if (!config.aiEnabled && !ai.apiKey) {
+          return sendJSON(res, 400, { error: 'AI 功能未启用, 请在设置中启用 aiEnabled 并填写 AI API key' });
+        }
+        const taskId = await startAISummary(url);
+        sendJSON(res, 200, { task_id: taskId, status: 'started' });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
+    else if (pathname.match(/^\/api\/ai\/progress\/([^/]+)$/) && req.method === 'GET') {
+      const id = pathname.split('/')[4];
+      const t = _aiTasks.get(id);
+      if (!t) return sendJSON(res, 404, { error: '任务不存在' });
+      sendJSON(res, 200, { task_id: t.taskId, status: t.status, progress: t.progress, video_title: t.videoTitle, error: t.error });
+    }
+    else if (pathname.match(/^\/api\/ai\/result\/([^/]+)$/) && req.method === 'GET') {
+      const id = pathname.split('/')[4];
+      const t = _aiTasks.get(id);
+      if (!t) return sendJSON(res, 404, { error: '任务不存在' });
+      if (t.status === 'error') return sendJSON(res, 400, { error: t.error });
+      if (t.status !== 'completed' || !t.result) return sendJSON(res, 202, { error: '总结尚未完成' });
+      sendJSON(res, 200, { task_id: t.taskId, status: t.status, video_title: t.videoTitle, result: t.result });
+    }
     // ── config API ──
     else if (pathname === '/api/config' && req.method === 'GET') {
       sendJSON(res, 200, { ...config });
+    }
+    // v0.6.0: 缩略图代理 (借鉴 uvd, 解决防盗链/跨域)
+    else if (pathname === '/api/proxy-thumbnail' && req.method === 'GET') {
+      try {
+        const u = new URL(req.url, 'http://localhost');
+        const target = u.searchParams.get('url') || '';
+        if (!target || !/^https?:\/\//i.test(target)) {
+          res.writeHead(400); res.end('Invalid url'); return;
+        }
+        const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
+        // 抖音 CDN 需要固定 Referer
+        if (target.includes('douyinpic.com') || target.includes('douyinvod.com') || target.includes('douyin.com')) {
+          headers['Referer'] = 'https://www.douyin.com/';
+        }
+        const proxyResp = await fetch(target, { headers, redirect: 'follow' });
+        if (!proxyResp.ok) {
+          res.writeHead(502, { 'Content-Type': 'text/plain' });
+          res.end(`Upstream error: ${proxyResp.status}`);
+          return;
+        }
+        const contentType = proxyResp.headers.get('content-type') || 'image/jpeg';
+        const buf = Buffer.from(await proxyResp.arrayBuffer());
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Content-Length': buf.length,
+          'Cache-Control': 'public, max-age=86400',
+        });
+        res.end(buf);
+      } catch (e) {
+        LOG('[proxy-thumbnail]', e.message);
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Proxy error: ' + e.message);
+      }
+      return;
     } else if (pathname === '/api/config' && req.method === 'POST') {
       const body = await parseBody(req);
       const newCfg = { ...config, ...body };

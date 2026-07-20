@@ -302,6 +302,7 @@
           <button class="settings-tab" data-tab="advanced" role="tab" aria-selected="false" aria-controls="settingsPanelAdvanced">🔧 高级</button>
           <button class="settings-tab" data-tab="filter" role="tab" aria-selected="false" aria-controls="settingsPanelFilter">🔍 过滤</button>
           <button class="settings-tab" data-tab="storage" role="tab" aria-selected="false" aria-controls="settingsPanelStorage">💾 存储</button>
+          <button class="settings-tab" data-tab="ai" role="tab" aria-selected="false" aria-controls="settingsPanelAi">🧠 AI</button>
         </div>
         <div class="settings-panels">
           <!-- 基本 -->
@@ -538,6 +539,52 @@
                 <button class="btn btn-ghost" type="button" onclick="$('ytDlpConfText').value=''">🗑 清空</button>
               </div>
               <div class="form-hint" id="ytDlpConfHint">支持 30 个常用 yt-dlp 参数白名单, 未知参数自动忽略</div>
+            </div>
+          </div>
+
+          <!-- AI 总结 (v0.6.0 借鉴 uvd) -->
+          <div class="settings-panel" id="settingsPanelAi" data-panel="ai" role="tabpanel" hidden>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label class="form-label">AI 提供商 (v0.6.0)</label>
+                <select class="input" id="setAiProvider">
+                  <option value="custom">自定义 (OpenAI 兼容)</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="glm">智谱 GLM</option>
+                  <option value="deepseek">DeepSeek</option>
+                </select>
+                <div class="form-hint">选 custom 可填任意 OpenAI 兼容端点</div>
+              </div>
+              <div class="form-group form-group-half">
+                <label class="form-label">&nbsp;</label>
+                <label class="form-label form-label-inline"><input type="checkbox" id="setAiEnabled"> 启用 AI 视频总结</label>
+                <div class="form-hint">开启后在任务详情可点 🧠 AI 总结 按钮</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label class="form-label">API Base URL</label>
+                <input class="input" id="setAiBaseUrl" placeholder="https://open.bigmodel.cn/api/paas/v4">
+              </div>
+              <div class="form-group form-group-half">
+                <label class="form-label">API Key</label>
+                <input class="input" id="setAiApiKey" type="password" placeholder="也可通过环境变量 AI_API_KEY 设置">
+                <div class="form-hint" id="aiEnvHint">环境变量 AI_API_KEY: <span id="aiEnvStatus">未设置</span></div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label class="form-label">模型</label>
+                <input class="input" id="setAiModel" placeholder="glm-4-flash / gpt-3.5-turbo / deepseek-chat">
+              </div>
+              <div class="form-group form-group-half">
+                <label class="form-label">高级参数</label>
+                <div class="input-group">
+                  <input class="input" id="setAiMaxTokens" type="number" placeholder="4096" style="flex:1">
+                  <input class="input" id="setAiTemperature" type="number" step="0.1" min="0" max="2" placeholder="0.3" style="flex:1">
+                </div>
+                <div class="form-hint">左 max_tokens, 右 temperature (0-2)</div>
+              </div>
             </div>
           </div>
 
@@ -807,14 +854,48 @@
             <summary>查看 info.txt</summary>
             <pre id="tdInfoContent" class="info-pre" style="max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-size:12px;line-height:1.4;margin-top:4px">(加载中...)</pre>
           </details>
+        <div class="form-group">
+          <label class="form-label">📈 下载速度曲线 (v0.6.0)</label>
+          <canvas id="tdSpeedChart" class="chart-canvas" width="600" height="140" style="width:100%;max-height:140px;background:var(--bg-card);border-radius:var(--radius-sm)"></canvas>
+          <div class="form-hint" id="tdSpeedHint">无速度数据 (任务还没开始)</div>
         </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="openPlayer(_currentDetailTaskId)" id="tdPlayBtn" style="display:none">▶ 播放</button>
       <button class="btn btn-ghost" onclick="copyYtDlpCmd(_currentDetailTaskId)">📋 复制命令</button>
+      <button class="btn btn-ghost" onclick="viewTaskSubtitle(_currentDetailTaskId)">📝 字幕</button>
+      <button class="btn btn-primary" onclick="startAISummaryUI(_currentDetailTaskId)">🧠 AI 总结</button>
       <button class="btn btn-ghost" onclick="hideModal('taskDetailModal')">关闭</button>
       <button class="btn btn-danger" onclick="try{deleteTask(_currentDetailTaskId);hideModal('taskDetailModal')}catch(e){console.error(e)}">🗑 删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI 总结 Modal (v0.6.0 借鉴 uvd) -->
+<div class="modal-overlay" id="aiSummaryModal" onclick="if(event.target===this)hideModal('aiSummaryModal')">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">🧠 AI 视频总结 — <span id="aiSummaryTitle">加载中…</span></span>
+      <button class="modal-close" onclick="hideModal('aiSummaryModal')" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="aiProgressBox" style="padding:30px;text-align:center">
+        <div class="loading-spinner" style="display:inline-block;width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite"></div>
+        <div id="aiProgressLabel" style="margin-top:12px;color:var(--text-muted)">准备中...</div>
+      </div>
+      <div id="aiResultBox" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <div class="tabs" id="aiTabs" role="tablist" style="flex:1">
+            <button class="tab active" data-aitab="summary" role="tab">智能总结</button>
+            <button class="tab" data-aitab="outline" role="tab">章节大纲</button>
+            <button class="tab" data-aitab="keypoints" role="tab">核心要点</button>
+            <button class="tab" data-aitab="mindmap" role="tab">思维导图</button>
+          </div>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="copyAIMarkdown()">📋 复制 Markdown</button>
+        </div>
+        <div id="aiResultContent" style="padding:8px;line-height:1.6;max-height:55vh;overflow-y:auto"></div>
+      </div>
     </div>
   </div>
 </div>

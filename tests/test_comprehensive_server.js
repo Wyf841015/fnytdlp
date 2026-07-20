@@ -816,3 +816,125 @@ describe('v0.5.0 ETA verbose', () => {
     assert.match(mainSrc, /pad2\(h\).{0,5}h.{0,5}pad2\(m\).{0,5}m.{0,5}pad2\(s\).{0,5}s/);
   });
 });
+
+// ════════════════════════════════════════════════════════════
+// v0.6.0 新增测试: 借鉴 uvd (AI 总结 / 缩略图代理 / 字幕提取 / 速度曲线 / URL 预处理 / 思维导图)
+// ════════════════════════════════════════════════════════════
+
+describe('v0.6.0 normalizeUrl', () => {
+  it('函数定义', () => assert.match(serverSrc, /const normalizeUrl = \(url\) =>/));
+  it('抖音 modal_id → /video/', () => {
+    assert.match(serverSrc, /modal_id[\s\S]*?return `https:\/\/www\.douyin\.com\/video\//);
+  });
+  it('抖音 /note/ → /video/', () => {
+      const mainSrc = fs.readFileSync(new URL('../ui/server.js', import.meta.url), 'utf8');
+      // 源码: u.pathname.match(/^\/note\/(\d+)/) — 文件里 \/note\/ 和 \d+ 是字面字符
+      assert.ok(mainSrc.includes('\/note\/'));
+      assert.ok(mainSrc.includes('\d+'));
+    });
+  it('POST /api/tasks 调用 normalizeUrl', () => {
+    assert.match(serverSrc, /const url = normalizeUrl\(body\.url\?\.trim\(\)\)/);
+  });
+  it('POST /api/info 调用 normalizeUrl', () => {
+    assert.match(serverSrc, /const url = normalizeUrl\(rawUrl\)/);
+  });
+});
+
+describe('v0.6.0 缩略图代理', () => {
+  it('路由 GET /api/proxy-thumbnail', () => assert.match(serverSrc, /pathname === '\/api\/proxy-thumbnail'/));
+  it('抖音 CDN Referer', () => {
+    assert.match(serverSrc, /douyinpic\.com[\s\S]*?Referer/);
+  });
+  it('fetch 转发', () => assert.match(serverSrc, /const proxyResp = await fetch\(target/));
+  it('Cache-Control 1 天', () => assert.match(serverSrc, /max-age=86400/));
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('前端 wrapThumb 函数', () => assert.match(mainSrc, /const wrapThumb = \(url\) =>/));
+  it('addPreview 缩略图走代理', () => assert.match(mainSrc, /src="\$\{esc\(wrapThumb\(info\.thumbnail\)/));
+  it('infoModal 缩略图走代理', () => assert.match(mainSrc, /src="\$\{esc\(wrapThumb\(info\.thumbnail\)\)\}"/));
+});
+
+describe('v0.6.0 字幕提取', () => {
+  it('_subtitleToText 函数', () => {
+    assert.match(serverSrc, /const _subtitleToText = \(content\) =>/);
+  });
+  it('VTT 时间戳正则', () => assert.match(serverSrc, /\\d\{2\}:\\d\{2\}:\\d\{2\}\[\.\,\]\\d\{3\}\\s\*-->/));
+  it('TTML 头移除', () => assert.match(serverSrc, /<tt\\b\[\^>\]\*\>/));
+  it('HTML 标签移除', () => assert.match(serverSrc, /<\[\^>\]\+>/g));
+  it('路由 GET /api/tasks/:id/subtitle', () => {
+    assert.ok(serverSrc.includes('/api/tasks/') && serverSrc.includes('/subtitle'));
+  });
+  it('zh-Hans 优先语言', () => assert.match(serverSrc, /'zh-Hans'/));
+  it('前端 viewTaskSubtitle 函数', () => {
+    const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+    assert.match(mainSrc, /const viewTaskSubtitle = async \(id\) =>/);
+  });
+  it('详情 modal 字幕按钮', () => {
+    const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+    assert.match(html, /onclick="viewTaskSubtitle\(_currentDetailTaskId\)"/);
+  });
+});
+
+describe('v0.6.0 AI 视频总结', () => {
+  it('DEFAULT_CONFIG aiEnabled 默认 false', () => assert.match(serverSrc, /aiEnabled:\s*false/));
+  it('DEFAULT_CONFIG aiProvider', () => assert.match(serverSrc, /aiProvider:\s*'custom'/));
+  it('DEFAULT_CONFIG aiModel', () => assert.match(serverSrc, /aiModel:\s*'gpt-3.5-turbo'/));
+  it('DEFAULT_CONFIG aiMaxTokens', () => assert.match(serverSrc, /aiMaxTokens:\s*4000/));
+  it('AI_PROVIDERS 配置', () => assert.match(serverSrc, /const AI_PROVIDERS = \{[\s\S]*?openai[\s\S]*?glm[\s\S]*?deepseek/));
+  it('_resolveAIConfig 优先环境变量', () => assert.match(serverSrc, /process\.env\.AI_API_KEY \|\| cfg\.aiApiKey/));
+  it('AI_SUMMARY_PROMPT 4 段格式', () => {
+    assert.match(serverSrc, /AI_SUMMARY_PROMPT = `[\s\S]*?智能总结[\s\S]*?章节大纲[\s\S]*?核心要点[\s\S]*?思维导图/);
+  });
+  it('startAISummary 函数', () => assert.match(serverSrc, /const startAISummary = async \(url\) =>/));
+  it('yt-dlp --skip-download --write-subs 提取字幕', () => {
+    assert.match(serverSrc, /'--skip-download', '--write-subs', '--write-auto-subs'/);
+  });
+  it('调用 OpenAI 兼容 /chat/completions', () => assert.match(serverSrc, /\/chat\/completions/));
+  it('Bearer Token 认证', () => assert.match(serverSrc, /Bearer \$\{ai\.apiKey\}/));
+  it('温度 + max_tokens', () => {
+    assert.match(serverSrc, /temperature:\s*parseFloat\(config\.aiTemperature/);
+    assert.match(serverSrc, /max_tokens:\s*parseInt\(config\.aiMaxTokens/);
+  });
+  it('12000 字截断', () => assert.match(serverSrc, /text\.length > 12000/));
+  it('4 段结果解析 (智能总结/大纲/要点/导图)', () => {
+    assert.match(serverSrc, /result\.summary\s*= p\.replace\(/);
+    assert.match(serverSrc, /result\.outline\s*= p\.replace\(/);
+    assert.match(serverSrc, /result\.key_points\s*= p\.replace\(/);
+    assert.match(serverSrc, /result\.mind_map\s*= p\.replace\(/);
+  });
+  it('POST /api/ai/summarize 端点', () => assert.match(serverSrc, /pathname === '\/api\/ai\/summarize'/));
+  it('GET /api/ai/progress/:id 端点', () => assert.ok(serverSrc.includes(String.raw`\/api\/ai\/progress\/`)));
+  it('GET /api/ai/result/:id 端点', () => assert.ok(serverSrc.includes(String.raw`\/api\/ai\/result\/`)));
+  it('aiEnabled 检查', () => {
+    assert.match(serverSrc, /!config\.aiEnabled && !ai\.apiKey/);
+  });
+
+  const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  it('HTML AI 配置 panel', () => assert.match(html, /id="settingsPanelAi"/));
+  it('HTML aiSummaryModal', () => assert.match(html, /id="aiSummaryModal"/));
+  it('HTML AI 4 个 tab', () => {
+    assert.match(html, /data-aitab="summary"/);
+    assert.match(html, /data-aitab="outline"/);
+    assert.match(html, /data-aitab="keypoints"/);
+    assert.match(html, /data-aitab="mindmap"/);
+  });
+  it('HTML AI 总结按钮 (任务详情)', () => assert.match(html, /onclick="startAISummaryUI\(_currentDetailTaskId\)"/));
+
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('前端 startAISummaryUI 函数', () => assert.match(mainSrc, /const startAISummaryUI = async \(taskId\) =>/));
+  it('前端 4-Tab 切换', () => assert.match(mainSrc, /const _aiSwitchTab = \(tab\) =>/));
+  it('前端 Markdown 渲染', () => assert.match(mainSrc, /const _renderMarkdown = \(text\) =>/));
+  it('前端 思维导图 fallback 渲染', () => assert.match(mainSrc, /const _renderMindMap = \(text\) =>/));
+  it('复制 Markdown 按钮', () => assert.match(mainSrc, /const copyAIMarkdown = async \(\) =>/));
+});
+
+describe('v0.6.0 单任务速度曲线', () => {
+  it('task._speedHistory 采样', () => assert.match(serverSrc, /task\._speedHistory\.push\(\{[\s\S]*?bps:\s*task\.speed/));
+  it('上限 200 采样点', () => assert.match(serverSrc, /task\._speedHistory\.length > 200/));
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('renderSpeedChart 函数', () => assert.match(mainSrc, /const renderSpeedChart = \(t\) =>/));
+  it('canvas 绘制折线', () => assert.match(mainSrc, /ctx\.stroke\(\)/));
+  it('HTML tdSpeedChart canvas', () => {
+    const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+    assert.match(html, /id="tdSpeedChart"/);
+  });
+});

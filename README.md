@@ -24,12 +24,13 @@
 - **下载历史统计** (v0.4.0)：4 个累计 KPI + 双 canvas 图表 (每日/按域名)，v0.4.1 移到独立 modal
 - **文件名模板预览** (v0.4.0)：输入 `%(title)s` 实时显示展开效果
 - **yt-dlp 高级参数** (v0.5.0)：视频裁剪 / aria2c / 转码 / 限速模板 / 主题跟随系统 / 导入配置 / 任务标签 / 重复检测 / 文件名预设
+- **AI 视频总结** (v0.6.0)：4 提供商 / 4-Tab 展示 / 思维导图 / 缩略图代理 / 字幕提取 / 速度曲线
 
 ## 安装
 
 ### 在 FnOS 应用中心安装
 
-1. 下载 `fnytdlp.fpk`（约 6.3 MB，v0.5.0）
+1. 下载 `fnytdlp.fpk`（约 6.3 MB，v0.6.0）
 2. 在飞牛NAS应用中心 → 手动安装
 3. 首次进入"设置"，配置下载路径（建议 `/vol2/1000/fnytdlp/`）
 4. 点"+"粘贴视频链接开始下载
@@ -232,6 +233,24 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 `initXxxDashboard` (幂等) / `loadTasks` (全量，结构变化) / `pollTasks` (增量，改 textContent 不 innerHTML)。比 `setInterval(loadTasks)` 强：无 focus 丢失 / 无 scroll 位置重置 / GPU 加速。
 
 ## 版本历史
+
+### v0.6.0 (2026-07-20)
+
+**AI 视频总结 + 缩略图代理 + 字幕提取 + 速度曲线 (借鉴 uvd 项目)**
+
+- **🧠 AI 视频总结** (零依赖, Node 22 fetch 调 OpenAI 兼容 API)
+  - 支持 4 家提供商: OpenAI / 智谱 GLM / DeepSeek / 自定义
+  - yt-dlp 自动提取字幕 (--skip-download --write-subs), fallback 到 description
+  - 4-Tab 展示: 智能总结 / 章节大纲 / 核心要点 / 思维导图
+  - 思维导图零依赖渲染 (Markdown 嵌套列表 → 树状 HTML), 无需 markmap CDN
+  - 复制 Markdown 全文到剪贴板
+  - 配置: 设置 → AI tab (aiEnabled/aiProvider/aiBaseUrl/aiApiKey/aiModel); 环境变量 AI_API_KEY 覆盖
+- **缩略图代理** (GET /api/proxy-thumbnail?url=...) — 解决防盗链/跨域, 抖音 CDN 自动加 Referer
+- **字幕提取** (GET /api/tasks/:id/subtitle) — VTT/SRT → 纯文本, 按 zh-Hans/zh/en 优先级匹配, 任务详情 📝 按钮
+- **单任务速度曲线** — task._speedHistory 200 采样点, 任务详情 canvas 折线, SSE 实时刷新
+- **URL 预处理** — 抖音 modal_id/note URL 自动转标准 video 格式 (normalizeUrl)
+- 新增 5 API 端点: /api/ai/summarize / /api/ai/progress/:id / /api/ai/result/:id / /api/proxy-thumbnail / /api/tasks/:id/subtitle
+- 测试 221 → 273 (+52), 6 个新 describe 块覆盖全部新功能
 
 ### v0.5.0 (2026-07-20)
 

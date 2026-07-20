@@ -6,7 +6,7 @@
 
 'use strict';
 
-console.log('[fnytdlp] main.js loaded, version=0.5.0');
+console.log('[fnytdlp] main.js loaded, version=0.6.0');
 
 // ── API client (统一网关模式) ──────────────────────────────────────
 const GATEWAY_BASE = (typeof window !== 'undefined' && window.GATEWAY_BASE) || (self.location?.pathname?.startsWith('/app/') ? '/app/fnytdlp' : '');
@@ -117,6 +117,14 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[c]));
 const pad = n => String(n).padStart(2, '0');
+
+// v0.6.0: 缩略图 URL 包装 (借鉴 uvd, 解决跨域+防盗链)
+// 所有外链缩略图通过 /api/proxy-thumbnail?url=... 走后端代理
+const wrapThumb = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  if (url.startsWith('/api/') || url.startsWith('data:') || url.startsWith('blob:')) return url;
+  return '/api/proxy-thumbnail?url=' + encodeURIComponent(url);
+};
 
 const formatBytes = (n) => {
   if (!n || n <= 0) return '0 B';
@@ -676,7 +684,7 @@ const parseUrls = async () => {
     _lastParsedInfo = info; // 缓存解析结果, 提交时复用
     $('addPreview').innerHTML = `
       <div class="info-card">
-        <img class="info-thumb" src="${esc(info.thumbnail || '')}" onerror="this.style.display='none'">
+        <img class="info-thumb" src="${esc(wrapThumb(info.thumbnail) || '')}" onerror="this.style.display='none'">
         <div class="info-meta">
           <div class="info-title">${esc(info.title)}</div>
           <div class="info-uploader">📺 ${esc(info.uploader || 'unknown')}</div>
@@ -968,7 +976,7 @@ const submitInfo = async () => {
     const info = await API.post('/api/info', { url });
     let html = `
       <div class="info-card">
-        ${info.thumbnail ? `<img class="info-thumb" src="${esc(info.thumbnail)}" onerror="this.style.display='none'">` : ''}
+        ${info.thumbnail ? `<img class="info-thumb" src="${esc(wrapThumb(info.thumbnail))}" onerror="this.style.display='none'">` : ''}
         <div class="info-meta">
           <div class="info-title">${esc(info.title)}</div>
           <div class="info-uploader">📺 ${esc(info.uploader || '')}</div>
@@ -1283,6 +1291,15 @@ const showSettingsModal = async () => {
   renderSpeedSchedule(Array.isArray(cfg.speedSchedule) ? cfg.speedSchedule : []);
   // yt-dlp 版本提示 (从 /api/health 拿最新)
   checkYtDlpUpdateHint();
+  // v0.6.0: AI 配置加载
+  if ($('setAiProvider')) $('setAiProvider').value = cfg.aiProvider || 'custom';
+  if ($('setAiEnabled')) $('setAiEnabled').checked = !!cfg.aiEnabled;
+  if ($('setAiBaseUrl')) $('setAiBaseUrl').value = cfg.aiBaseUrl || '';
+  if ($('setAiApiKey')) $('setAiApiKey').value = cfg.aiApiKey || '';
+  if ($('setAiModel')) $('setAiModel').value = cfg.aiModel || 'gpt-3.5-turbo';
+  if ($('setAiMaxTokens')) $('setAiMaxTokens').value = cfg.aiMaxTokens || 4096;
+  if ($('setAiTemperature')) $('setAiTemperature').value = cfg.aiTemperature ?? 0.3;
+  if ($('aiEnvStatus')) $('aiEnvStatus').textContent = '（前端无法读取, 由 server 端 process.env 决定）';
   // 切回 basic tab (每次打开重置)
   switchSettingsTab('basic');
   showModal('settingsModal');
@@ -1370,6 +1387,14 @@ const saveSettings = async () => {
       etaVerbose: $('setEtaVerbose')?.checked || false,
       checkYtDlpUpdate: $('setCheckYtDlpUpdate')?.checked || false,
       speedSchedule: collectSpeedSchedule(),
+      // v0.6.0 AI
+      aiEnabled: $('setAiEnabled')?.checked || false,
+      aiProvider: $('setAiProvider')?.value || 'custom',
+      aiBaseUrl: $('setAiBaseUrl')?.value.trim() || '',
+      aiApiKey: $('setAiApiKey')?.value.trim() || '',
+      aiModel: $('setAiModel')?.value.trim() || 'gpt-3.5-turbo',
+      aiMaxTokens: parseInt($('setAiMaxTokens')?.value) || 4096,
+      aiTemperature: parseFloat($('setAiTemperature')?.value) || 0.3,
     };
     const r = await API.post('/api/config', cfg);
     if (r && r.ok) { hideModal('settingsModal'); toast('设置已保存', 'success'); }
@@ -2060,8 +2085,47 @@ function showTaskDetail(id) {
   if (playBtn) {
     playBtn.style.display = (t.status === 'completed' && t.filename) ? '' : 'none';
   }
+  // v0.6.0: 渲染下载速度曲线
+  renderSpeedChart(t);
 }
 window.showTaskDetail = showTaskDetail;
+
+// v0.6.0: 速度曲线 canvas 渲染 (单任务)
+const renderSpeedChart = (t) => {
+  const canvas = $('tdSpeedChart');
+  const hint = $('tdSpeedHint');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const data = t._speedHistory || [];
+  // 清空画布 (深色背景)
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-card') || '#1a1a2e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (data.length < 2) {
+    if (hint) hint.textContent = data.length === 0 ? '无速度数据 (任务还没开始)' : `1 个采样点, 等待更多数据...`;
+    return;
+  }
+  // 计算 max
+  let maxBps = 0;
+  for (const d of data) if (d.bps > maxBps) maxBps = d.bps;
+  if (maxBps === 0) { if (hint) hint.textContent = '速度都是 0'; return; }
+  // 画线
+  ctx.strokeStyle = '#00d4aa';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  const t0 = data[0].t;
+  const tEnd = data[data.length - 1].t;
+  const dt = Math.max(1, tEnd - t0);
+  for (let i = 0; i < data.length; i++) {
+    const x = (data[i].t - t0) / dt * (canvas.width - 4) + 2;
+    const y = canvas.height - 2 - (data[i].bps / maxBps) * (canvas.height - 4);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // 当前速度文本
+  const last = data[data.length - 1];
+  if (hint) hint.textContent = `峰值 ${formatSpeed(maxBps)} · 当前 ${formatSpeed(last.bps)} · ${data.length} 个采样点`;
+};
 
 // v0.5.0: 一键复制 yt-dlp 命令 (从 /api/formats 不易, 直接用 task.options 拼)
 const copyYtDlpCmd = async (id) => {
@@ -2079,6 +2143,167 @@ const copyYtDlpCmd = async (id) => {
   }
 };
 window.copyYtDlpCmd = copyYtDlpCmd;
+
+// v0.6.0: 查看任务字幕 (借鉴 uvd)
+const viewTaskSubtitle = async (id) => {
+  try {
+    const r = await API.get(`/api/tasks/${encodeURIComponent(id)}/subtitle`);
+    if (r.error) { toast(r.error + (r.hint ? ' — ' + r.hint : ''), 'warning', 4000); return; }
+    if (!r.text) { toast('字幕内容为空', 'warning'); return; }
+    // 弹出查看器 (复用现有 modal 模式)
+    const html = `<div style="max-height:60vh;overflow-y:auto;white-space:pre-wrap;line-height:1.6;font-size:14px;padding:8px;background:var(--bg-card);border-radius:var(--radius-sm)">${esc(r.text)}</div>
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="navigator.clipboard.writeText(arguments[0].dataset.text).then(()=>toast('已复制 '+arguments[0].dataset.length+' 字符','success'))" data-text="${esc(r.text)}" data-length="${r.length}">📋 复制全文</button>
+        <span style="color:var(--text-dim);align-self:center">📄 ${esc(r.file)} · ${r.length} 字符</span>
+      </div>`;
+    // 复用 confirm modal 样式但换成展示
+    const m = $('confirmModal');
+    if (m) {
+      $('confirmTitle').textContent = '📝 字幕内容';
+      $('confirmMessage').innerHTML = html;
+      showModal('confirmModal');
+    }
+  } catch (e) {
+    toast('字幕加载失败: ' + e.message, 'error');
+  }
+};
+window.viewTaskSubtitle = viewTaskSubtitle;
+
+// v0.6.0: AI 视频总结 UI (借鉴 uvd 4-Tab 布局)
+const _renderMarkdown = (text) => {
+  if (!text) return '<p style="color:var(--text-dim)">暂无内容</p>';
+  let html = esc(text);
+  html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+  html = html.replace(/\n\n+/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  if (!html.startsWith('<')) html = '<p>' + html + '</p>';
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  return html;
+};
+
+// v0.6.0: 简易思维导图渲染 (Markdown 嵌套列表 -> 树状 HTML, 不依赖 markmap CDN)
+const _renderMindMap = (text) => {
+  if (!text) return '<p style="color:var(--text-dim)">暂无思维导图</p>';
+  const lines = text.split('\n');
+  const root = { label: '', children: [] };
+  const stack = [{ node: root, indent: -1 }];
+  for (const raw of lines) {
+    const m = raw.match(/^(\s*)[-*]\s+(.+)$/);
+    if (!m) continue;
+    const indent = m[1].length;
+    const label = m[2].replace(/\*\*(.+?)\*\*/g, '$1').trim();
+    const node = { label, children: [] };
+    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
+    stack[stack.length - 1].node.children.push(node);
+    stack.push({ node, indent });
+  }
+  const renderNode = (n, isRoot) => {
+    const cls = isRoot ? 'mindmap-node root' : 'mindmap-node';
+    let h = `<div class="${cls}"><div class="mindmap-label">${esc(n.label)}</div>`;
+    if (n.children.length > 0) {
+      h += '<div class="mindmap-children">';
+      for (const c of n.children) h += renderNode(c, false);
+      h += '</div>';
+    }
+    return h + '</div>';
+  };
+  // 取第一个 child 作根 (如果只有一个根)
+  if (root.children.length === 1 && root.children[0].children.length > 0) {
+    return renderNode(root.children[0], true);
+  }
+  return root.children.map(c => renderNode(c, true)).join('');
+};
+
+const _aiCurrentTask = { taskId: '', result: null };
+const _aiSwitchTab = (tab) => {
+  document.querySelectorAll('#aiTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.aitab === tab));
+  const result = _aiCurrentTask.result || {};
+  const content = $('aiResultContent');
+  if (!content) return;
+  const map = {
+    summary: result.summary || '',
+    outline: result.outline || '',
+    keypoints: result.key_points || '',
+    mindmap: result.mind_map || '',
+  };
+  const raw = map[tab] || '';
+  content.innerHTML = tab === 'mindmap' ? _renderMindMap(raw) : _renderMarkdown(raw);
+};
+
+const startAISummaryUI = async (taskId) => {
+  const t = (typeof tasks !== 'undefined' ? tasks : []).find(x => x.id === taskId);
+  if (!t) { toast('任务不存在', 'error'); return; }
+  if (!t.url) { toast('任务无 URL', 'error'); return; }
+  // 重置 modal 状态
+  _aiCurrentTask.taskId = '';
+  _aiCurrentTask.result = null;
+  if ($('aiSummaryTitle')) $('aiSummaryTitle').textContent = t.title || t.url;
+  if ($('aiProgressBox')) $('aiProgressBox').style.display = '';
+  if ($('aiResultBox')) $('aiResultBox').style.display = 'none';
+  if ($('aiProgressLabel')) $('aiProgressLabel').textContent = '启动中...';
+  showModal('aiSummaryModal');
+  // tab 切换监听 (一次性绑定, 已绑过就不重复)
+  if (!window._aiTabsBound) {
+    document.querySelectorAll('#aiTabs .tab').forEach(t => {
+      t.addEventListener('click', () => _aiSwitchTab(t.dataset.aitab));
+    });
+    window._aiTabsBound = true;
+  }
+  try {
+    const r = await API.post('/api/ai/summarize', { url: t.url });
+    if (r.error) {
+      if ($('aiProgressLabel')) $('aiProgressLabel').textContent = '❌ ' + r.error;
+      return;
+    }
+    _aiCurrentTask.taskId = r.task_id;
+    // 轮询进度
+    const poll = setInterval(async () => {
+      try {
+        const p = await API.get('/api/ai/progress/' + r.task_id);
+        if ($('aiProgressLabel')) $('aiProgressLabel').textContent = p.progress || '处理中...';
+        if (p.status === 'completed') {
+          clearInterval(poll);
+          const res = await API.get('/api/ai/result/' + r.task_id);
+          _aiCurrentTask.result = res.result;
+          if ($('aiSummaryTitle')) $('aiSummaryTitle').textContent = res.video_title || t.title || t.url;
+          if ($('aiProgressBox')) $('aiProgressBox').style.display = 'none';
+          if ($('aiResultBox')) $('aiResultBox').style.display = '';
+          _aiSwitchTab('summary');
+        } else if (p.status === 'error') {
+          clearInterval(poll);
+          if ($('aiProgressLabel')) $('aiProgressLabel').textContent = '❌ ' + (p.error || '总结失败');
+        }
+      } catch (e) { /* ignore */ }
+    }, 1500);
+  } catch (e) {
+    if ($('aiProgressLabel')) $('aiProgressLabel').textContent = '❌ ' + e.message;
+  }
+};
+window.startAISummaryUI = startAISummaryUI;
+
+// v0.6.0: 复制 AI 总结为 Markdown (借鉴 uvd 导出但简化, 0 依赖)
+const copyAIMarkdown = async () => {
+  const r = _aiCurrentTask.result || {};
+  if (!r.summary && !r.outline) { toast('无 AI 总结内容', 'warning'); return; }
+  const md = [
+    '### 智能总结', r.summary || '',
+    '', '### 章节大纲', r.outline || '',
+    '', '### 核心要点', r.key_points || '',
+    '', '### 思维导图', r.mind_map || '',
+  ].join('\n');
+  try {
+    await navigator.clipboard.writeText(md);
+    toast('已复制 AI 总结到剪贴板 (Markdown 格式)', 'success');
+  } catch (e) {
+    window.prompt('复制以下 Markdown:', md);
+  }
+};
+window.copyAIMarkdown = copyAIMarkdown;
 
 // ── 视频播放器 ──────────────────────────────────────────────
 const openPlayer = (id) => {
@@ -2179,6 +2404,11 @@ const startSSE = () => {
     const i = tasks.findIndex(x => x.id === t.id);
     if (i >= 0) tasks[i] = { ...tasks[i], ...t };
     else tasks.push(t);
+    // v0.6.0: 详情 modal 打开时实时刷新速度曲线
+    if (_currentDetailTaskId === t.id && $('taskDetailModal')?.classList.contains('active')) {
+      const full = tasks.find(x => x.id === t.id);
+      if (full && typeof renderSpeedChart === 'function') renderSpeedChart(full);
+    }
     scheduleRender();
   });
   _eventSource.addEventListener('task-deleted', (e) => {

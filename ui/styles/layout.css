@@ -2144,3 +2144,32 @@ html[data-theme='light'] .sched-item.sched-completed {
   padding: 4px 8px;
   font-size: 0.85rem;
 }
+
+/* ===== v0.6.0: 思维导图 (简易渲染, 不依赖 markmap) ===== */
+.mindmap-node {
+  margin: 4px 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+}
+.mindmap-node.root {
+  border-left: none;
+  margin-bottom: 12px;
+}
+.mindmap-node.root .mindmap-label {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+.mindmap-label {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.9rem;
+  margin: 2px 0;
+}
+.mindmap-children {
+  margin-left: 16px;
+  padding-left: 8px;
+}
