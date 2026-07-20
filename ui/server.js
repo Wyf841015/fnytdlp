@@ -654,7 +654,7 @@ const normalizeUrl = (url) => {
 };
 
 // ── path whitelist (下载路径必须在合理的系统路径下) ──────────
-const _SYSTEM_BLOCKED = ['/etc', '/proc', '/sys', '/dev', '/boot', '/lost+found', '/root', '/var/run', '/var/log', '/var/cache', '/snap', '/lib', '/lib64', '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/lib64', '/opt'];
+const _SYSTEM_BLOCKED = ['/etc', '/proc', '/sys', '/dev', '/boot', '/lost+found', '/root', '/var/run', '/var/log', '/var/cache', '/snap', '/lib', '/lib64', '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/lib64'];
 const isSystemPath = (p) => {
   const resolved = path.resolve(p);
   for (const b of _SYSTEM_BLOCKED) {
@@ -1945,8 +1945,12 @@ const startAISummary = async (url) => {
           isRoot: resolved === '/'
         });
       } catch (e) {
-        sendJSON(res, 500, { error: '读取目录失败: ' + e.message });
-      }
+              if (e.code === 'EACCES') {
+                sendJSON(res, 403, { error: '无权限访问该目录，请在设置中手动输入下载路径（应用运行用户无权读取此目录）' });
+              } else {
+                sendJSON(res, 500, { error: '读取目录失败: ' + e.message });
+              }
+          }
     }
     // ── quota (磁盘配额检查 + 自动清理, v0.4.0 新增) ─────────────
     else if (pathname === '/api/quota' && req.method === 'GET') {
@@ -2182,11 +2186,10 @@ const startAISummary = async (url) => {
     } else if (pathname === '/api/config' && req.method === 'POST') {
       const body = await parseBody(req);
       const newCfg = { ...config, ...body };
-      // P2-2: 使用 isSystemPath 防止下载路径设为系统目录
       if (newCfg.downloadPath) {
         const resolved = path.resolve(newCfg.downloadPath);
-        if (!resolved || resolved === '/' || isSystemPath(resolved)) {
-          return sendJSON(res, 400, { error: 'Invalid downloadPath: cannot be a system directory' });
+        if (!resolved || resolved === '/') {
+          return sendJSON(res, 400, { error: 'Invalid downloadPath: cannot be root' });
         }
       }
       config = newCfg;

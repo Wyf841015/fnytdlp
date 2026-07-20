@@ -203,7 +203,7 @@ describe('isSystemPath', () => {
     assert.ok(isSystemPath('/usr/bin'));
     assert.ok(isSystemPath('/usr/lib'));
     assert.ok(isSystemPath('/var/run'));
-    assert.ok(isSystemPath('/opt'));
+    assert.ok(isSystemPath('/etc'));
   });
   it('用户路径通过', () => {
     assert.ok(!isSystemPath('/home/user/downloads'));
