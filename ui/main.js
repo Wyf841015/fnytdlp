@@ -360,8 +360,9 @@ const renderTasks = () => {
   const byFilter = currentFilter === 'all' ? tasks : tasks.filter(t => t.status === currentFilter);
   const filtered = !query ? byFilter : byFilter.filter(t => {
     const url = (t.url || '').toLowerCase();
-    const fname = (t.filename || t.title || '').toLowerCase();
-    return url.includes(query) || fname.includes(query);
+    const fname = (t.filename || '').toLowerCase();
+    const ttitle = (t.title || '').toLowerCase();
+    return url.includes(query) || fname.includes(query) || ttitle.includes(query);
   });
   if (filtered.length === 0) {
     list.innerHTML = '';
@@ -1218,6 +1219,15 @@ const showSettingsModal = async () => {
   $('setMinFilesize').value = cfg.minFilesize || '';
   $('setMaxFilesize').value = cfg.maxFilesize || '';
   $('setMatchFilters').value = cfg.matchFilters || '';
+  // v0.4.0: 配额 + 文件名模板 (storage panel)
+  if ($('setQuotaSize')) {
+    // 把字节回填成人类可读 (50G / 500M)
+    const qb = parseInt(cfg.quotaBytes || 0);
+    $('setQuotaSize').value = qb > 0 ? formatBytes(qb) : '';
+  }
+  if ($('setQuotaAutoClean')) $('setQuotaAutoClean').checked = !!cfg.quotaAutoClean;
+  if ($('setOutputTemplate')) $('setOutputTemplate').value = cfg.outputTemplate || '';
+  updateOutputTemplatePreview();
   // 切回 basic tab (每次打开重置)
   switchSettingsTab('basic');
   showModal('settingsModal');
@@ -1290,6 +1300,10 @@ const saveSettings = async () => {
       minFilesize: $('setMinFilesize').value.trim(),
       maxFilesize: $('setMaxFilesize').value.trim(),
       matchFilters: $('setMatchFilters').value.trim(),
+      // v0.4.0 配额 + 文件名模板
+      quotaBytes: parseInt(_humanQuota($('setQuotaSize')?.value || '')) || 0,
+      quotaAutoClean: $('setQuotaAutoClean')?.checked || false,
+      outputTemplate: $('setOutputTemplate')?.value.trim() || '%(title)s [%(id)s].%(ext)s',
     };
     const r = await API.post('/api/config', cfg);
     if (r && r.ok) { hideModal('settingsModal'); toast('设置已保存', 'success'); }
@@ -1305,6 +1319,202 @@ window.browseEnterDir = browseEnterDir;
 window.browseGoUp = browseGoUp;
 window.browseSelectCurrent = browseSelectCurrent;
 window.showSettingsModal = showSettingsModal;
+
+// ── v0.4.0 磁盘配额 (检查 + 清理) ─────────────────────────
+const checkQuotaNow = async () => {
+  const hint = $('quotaUsageHint');
+  if (hint) hint.textContent = '扫描中…';
+  try {
+    const u = await API.get('/api/quota');
+    const used = formatBytes(u.bytes || 0);
+    const quota = u.quotaBytes > 0 ? formatBytes(u.quotaBytes) : '不限';
+    const pct = u.percent;
+    const bar = pct > 0 ? ' [' + pct + '%]' : '';
+    if (hint) {
+      hint.textContent = `已用 ${used} / ${quota}${bar} · ${u.files} 文件 · ${esc(u.path)}`;
+      hint.style.color = pct >= 90 ? 'var(--color-danger)' : (pct >= 70 ? 'var(--color-warning)' : '');
+    }
+  } catch (e) {
+    if (hint) { hint.textContent = '检查失败: ' + e.message; hint.style.color = 'var(--color-danger)'; }
+  }
+};
+window.checkQuotaNow = checkQuotaNow;
+
+const cleanQuotaNow = async () => {
+  const hint = $('quotaUsageHint');
+  if (hint) hint.textContent = '清理中…';
+  try {
+    const r = await API.post('/api/quota/clean', {});
+    if (r.enforced) {
+      toast(`已清理 ${r.deletedCount} 个旧任务, 释放 ${formatBytes(r.freedBytes)}`, 'success');
+    } else {
+      toast('未超配额, 无需清理', 'info');
+    }
+    await checkQuotaNow();
+  } catch (e) {
+    toast('清理失败: ' + e.message, 'error');
+  }
+};
+window.cleanQuotaNow = cleanQuotaNow;
+
+// 把人类可读尺寸 "50G" 转字节回填 hidden field
+const _humanQuota = (v) => {
+  if (!v) return '';
+  const s = String(v).trim();
+  const m = s.match(/^(\d+(?:\.\d+)?)([KMGT]?)$/i);
+  if (!m) return s;
+  const n = parseFloat(m[1]);
+  const unit = (m[2] || '').toUpperCase();
+  const mult = unit === 'T' ? 1024**4 : unit === 'G' ? 1024**3 : unit === 'M' ? 1024**2 : unit === 'K' ? 1024 : 1;
+  return String(Math.floor(n * mult));
+};
+
+// ── v0.4.0 文件名模板实时预览 ─────────────────────────
+const _previewOutputTemplate = (tpl) => {
+  // 找一个已完成任务的真实样本做替换
+  const sample = (typeof tasks !== 'undefined' ? tasks : []).find(t => t.status === 'completed' && (t.title || t.filename));
+  const title = sample?.title || '示例视频标题';
+  const id = sample?.id || 'dQw4w9WgXcQ';
+  const ext = sample?.ext || 'mp4';
+  const uploader = sample?.uploader || '示例UP主';
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  let r = tpl || '%(title)s [%(id)s].%(ext)s';
+  r = r.replace(/%\(title\)s/gi, title)
+       .replace(/%\(id\)s/gi, id)
+       .replace(/%\(ext\)s/gi, ext)
+       .replace(/%\(uploader\)s/gi, uploader)
+       .replace(/%\(upload_date\)s/gi, date);
+  return r;
+};
+const updateOutputTemplatePreview = () => {
+  const el = $('outputTemplatePreviewText');
+  if (!el) return;
+  el.textContent = _previewOutputTemplate($('setOutputTemplate')?.value || '');
+};
+window.updateOutputTemplatePreview = updateOutputTemplatePreview;
+
+// ── v0.4.0 统计 (KPI 累计 + 双图) ─────────────────────────
+const computeStats = () => {
+  const all = (typeof tasks !== 'undefined' ? tasks : []);
+  const completed = all.filter(t => t.status === 'completed');
+  const totalBytes = completed.reduce((s, t) => s + (t.totalBytes || 0), 0);
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  const ms = monthStart.getTime();
+  const monthBytes = completed.filter(t => (t.completedAt || t.updatedAt || 0) >= ms)
+                              .reduce((s, t) => s + (t.totalBytes || 0), 0);
+  // 总耗时: completed 任务的 completedAt - createdAt 之和
+  let totalDurMs = 0;
+  for (const t of completed) {
+    const a = t.createdAt || 0, b = t.completedAt || t.updatedAt || 0;
+    if (a && b && b > a) totalDurMs += (b - a);
+  }
+  return {
+    totalBytes, monthBytes, completedCount: completed.length, totalDurMs,
+    tasks: all,
+  };
+};
+
+const _drawDailyChart = (canvas, daily) => {
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  // 找最大值
+  const max = Math.max(1, ...daily.map(d => d.bytes));
+  const pad = 24, barW = (w - pad*2) / daily.length;
+  const colors = getComputedStyle(document.body).getPropertyValue('--kpi-accent-h') || '220';
+  daily.forEach((d, i) => {
+    const bh = (h - pad*2) * d.bytes / max;
+    const x = pad + i*barW + 2;
+    const y = h - pad - bh;
+    ctx.fillStyle = `hsl(${colors}, 80%, 60%)`;
+    ctx.fillRect(x, y, barW - 4, bh);
+    // 日期标签 (每 5 天)
+    if (i % 5 === 0) {
+      ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-dim') || '#888';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(d.label, x + (barW-4)/2, h - 4);
+    }
+  });
+};
+
+const _drawDomainChart = (canvas, byDomain) => {
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const entries = Object.entries(byDomain).sort((a,b) => b[1] - a[1]).slice(0, 8);
+  if (entries.length === 0) {
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-dim') || '#888';
+    ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('暂无数据', w/2, h/2);
+    return;
+  }
+  const total = entries.reduce((s, [,v]) => s+v, 0);
+  let cy = 16;
+  entries.forEach(([dom, bytes], i) => {
+    const pct = (bytes / total * 100).toFixed(1);
+    ctx.fillStyle = `hsl(${(i*47)%360}, 70%, 60%)`;
+    ctx.fillRect(8, cy+2, 10, 10);
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text') || '#fff';
+    ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(`${dom}  ${pct}%`, 24, cy+11);
+    cy += 18;
+  });
+};
+
+const renderStatsPanel = () => {
+  const s = computeStats();
+  $('statsTotalBytes').textContent = formatBytes(s.totalBytes);
+  $('statsCompletedCount').textContent = s.completedCount.toString();
+  $('statsMonthBytes').textContent = formatBytes(s.monthBytes);
+  $('statsTotalDuration').textContent = formatDuration(Math.floor(s.totalDurMs / 1000));
+  // 每日 (近 30 天)
+  const now = new Date();
+  const daily = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(now); d.setDate(now.getDate() - i);
+    const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const dayEnd = dayStart + 86400000;
+    const bytes = s.tasks.filter(t => {
+      if (t.status !== 'completed') return false;
+      const ts = t.completedAt || t.updatedAt || 0;
+      return ts >= dayStart && ts < dayEnd;
+    }).reduce((sum, t) => sum + (t.totalBytes || 0), 0);
+    daily.push({ label: String(d.getDate()), bytes });
+  }
+  _drawDailyChart($('chartDaily'), daily);
+  // 按域名 (从 URL 取 hostname)
+  const byDomain = {};
+  for (const t of s.tasks) {
+    if (t.status !== 'completed') continue;
+    try { const h = new URL(t.url || '').hostname || 'unknown'; byDomain[h] = (byDomain[h] || 0) + (t.totalBytes || 0); }
+    catch (e) { byDomain['unknown'] = (byDomain['unknown'] || 0) + (t.totalBytes || 0); }
+  }
+  _drawDomainChart($('chartDomain'), byDomain);
+};
+window.renderStatsPanel = renderStatsPanel;
+
+// 监听 storage/stats tab 切换触发 (initSettingsTabs 在 DOMContentLoaded 调用,
+// 这里直接 attach click listener 即可)
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#settingsModal .settings-tab').forEach(t => {
+    if (t.dataset._statsHooked) return;
+    t.dataset._statsHooked = '1';
+    t.addEventListener('click', () => {
+      if (t.dataset.tab === 'stats') renderStatsPanel();
+      if (t.dataset.tab === 'storage') {
+        // 切到 storage 时显示已配的 quota 字节回填到输入框 (只读显示)
+        const cfg = window._config || {};
+        const input = $('setQuotaSize');
+        if (input && cfg.quotaBytes && !input.value) {
+          input.value = cfg.quotaBytes;
+        }
+      }
+    });
+  });
+});
 
 // ── Cookie Modal (多网站) ─────────────────────────────────────────
 const renderCookieList = (cookies) => {
@@ -1793,6 +2003,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (e) { console.warn('Sparkline init failed', e); }
   // M-1: Settings Tab 切换初始化
   initSettingsTabs();
+  // v0.4.0: 文件名模板实时预览
+  const _setOutputTemplate = $('setOutputTemplate');
+  if (_setOutputTemplate) {
+    _setOutputTemplate.addEventListener('input', updateOutputTemplatePreview);
+    updateOutputTemplatePreview();
+  }
   // M-3: 搜索栏实时过滤
   const _searchInput = $('searchInput');
   if (_searchInput) _searchInput.addEventListener('input', () => renderTasks());

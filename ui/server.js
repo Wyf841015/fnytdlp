@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { applyLine as _applyProgressLine, newTask as _newProgressTask } from './util/progress-aggregator.js';
 
 // ── version (保持与 manifest 一致 ────────────────────────────────────────
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 // ── paths ──────────────────────────────────────────────────────────────
 const PKGVAR    = process.env.TRM_PKGVAR || process.env.TRIM_PKGVAR || null;
 const APPDEST   = process.env.TRIM_APPDEST || null;
@@ -345,6 +345,9 @@ const DEFAULT_CONFIG = {
   maxDownloads: 0,                 // --max-downloads 0=不限
   convertSubs: '',                 // --convert-subs 例 'srt' 'vtt' (空=不转换)
   audioMultistreams: false,        // --audio-multistreams 多音轨合并
+  // 磁盘配额 (0 = 关闭)
+  quotaBytes: 0,                   // 配额字节数, 0=不限制; 例 50GB = 50 * 1024^3
+  quotaAutoClean: false,           // 配额超出时自动删最旧已完成任务
   // 频道订阅
   subscriptions: [],               // [{url, name, lastId, interval, cookieName, format, enabled}]
 };
@@ -932,6 +935,16 @@ const retryTask = (id) => {
 const parseAndCreateTask = async (url, options = {}) => {
   let title = '';
   let rawInfo = null;
+  // 0. 配额自动清理 (quotaAutoClean=true 且 quotaBytes>0 时, 先清理旧任务腾空间)
+  // 失败容错: 清理失败不阻塞添加任务
+  if (config.quotaAutoClean && parseInt(config.quotaBytes || 0) > 0) {
+    try {
+      const en = await enforceQuota();
+      if (en.enforced) {
+        LOG('[parseAndCreateTask] autoClean freed=' + en.freedBytes + ' deleted=' + en.deletedCount);
+      }
+    } catch (e) { LOG('[parseAndCreateTask] autoClean failed:', e.message); }
+  }
   // 如果前端已传解析结果, 直接复用, 跳过第二次 yt-dlp --dump-json
   if (options._parsedInfo?.title) {
     rawInfo = options._parsedInfo;
@@ -1213,6 +1226,143 @@ const infoUrl = (url, cookieName) => {
 };
 
 // ══════════════════════════════════════════════════════════════════
+// 模块 4b: 磁盘配额扫描 + 自动清理 (v0.4.0 新增)
+// ══════════════════════════════════════════════════════════════════
+// 扫描 downloadPath 内全部文件 (含子目录) 累计字节数
+// timeout 10s 防大目录挂死
+const computeDirBytes = (dir) => {
+  return new Promise((resolve) => {
+    let total = 0;
+    let files = 0;
+    const timer = setTimeout(() => {
+      LOG('[quota] scan timeout, partial=' + total + ' files=' + files);
+      resolve({ bytes: total, files });
+    }, 10000);
+    const walk = (d) => {
+      let entries;
+      try { entries = fs.readdirSync(d, { withFileTypes: true }); }
+      catch (e) { return; }  // 权限/不存在容错
+      for (const ent of entries) {
+        const fp = path.join(d, ent.name);
+        if (ent.isDirectory()) walk(fp);
+        else if (ent.isFile()) {
+          try {
+            const st = fs.statSync(fp);
+            total += st.size;
+            files++;
+          } catch (e) { /* 单文件失败跳过 */ }
+        }
+      }
+    };
+    try {
+      if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) walk(dir);
+      clearTimeout(timer);
+      resolve({ bytes: total, files });
+    } catch (e) {
+      clearTimeout(timer);
+      resolve({ bytes: 0, files: 0, error: e.message });
+    }
+  });
+};
+
+// 解析 "50G" "500M" "1024K" 之类字符串为字节数 (空/0/无效 = 0)
+const parseSizeString = (s) => {
+  if (!s && s !== 0) return 0;
+  if (typeof s === 'number') return Math.max(0, s);
+  const m = String(s).trim().match(/^(\d+(?:\.\d+)?)\s*([KMGT]?B?|)$/i);
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
+  const unit = (m[2] || '').toUpperCase();
+  const mult = unit === 'TB' || unit === 'T' ? 1024 ** 4
+              : unit === 'GB' || unit === 'G' ? 1024 ** 3
+              : unit === 'MB' || unit === 'M' ? 1024 ** 2
+              : unit === 'KB' || unit === 'K' ? 1024
+              : 1;
+  return Math.floor(n * mult);
+};
+
+// 检查配额使用情况 (返回 bytes/files/quotaBytes/percent)
+const checkQuotaUsage = async () => {
+  const target = config.downloadPath || DEFAULT_CONFIG.downloadPath;
+  const quota = parseInt(config.quotaBytes || 0);
+  const scan = await computeDirBytes(target);
+  return {
+    bytes: scan.bytes,
+    files: scan.files,
+    quotaBytes: quota,
+    percent: quota > 0 ? Math.min(100, Math.round(scan.bytes * 100 / quota)) : 0,
+    path: target,
+    scanError: scan.error || '',
+  };
+};
+
+// 按 completedAt 升序 (最旧在前), 删除任务对应文件 + 任务记录
+// 返回 {deleted: [{id, filename, freedBytes}], freedTotal}
+const deleteTaskFiles = (taskIds) => {
+  const deleted = [];
+  let freed = 0;
+  for (const id of taskIds) {
+    const t = tasks.get(id);
+    if (!t) continue;
+    if (t.filename) {
+      const fp = path.join(t._downloadFolder || config.downloadPath || DEFAULT_CONFIG.downloadPath, t.filename);
+      try {
+        if (fs.existsSync(fp)) {
+          const sz = fs.statSync(fp).size;
+          fs.unlinkSync(fp);
+          freed += sz;
+        }
+      } catch (e) {
+        LOG('[quota] unlink failed: ' + fp + ' - ' + e.message);
+      }
+    }
+    tasks.delete(id);
+    deleted.push({ id, filename: t.filename || '', freedBytes: freed });
+  }
+  if (deleted.length > 0) {
+    saveTasks();
+    for (const d of deleted) broadcast('task-removed', { id: d.id });
+  }
+  return { deleted, freedTotal: freed };
+};
+
+// 配额超出时清理最旧的 N 个已完成任务 (status='completed')
+// 持续删除直到 bytes < quotaBytes (或任务清空)
+// maxDelete 默认 100 防一次清太多
+const autoCleanOldest = async (quotaBytes, maxDelete = 100) => {
+  const completed = [];
+  for (const t of tasks.values()) {
+    if (t.status === 'completed') {
+      completed.push({
+        id: t.id,
+        filename: t.filename || '',
+        completedAt: t.completedAt || t.updatedAt || 0,
+        size: t.totalBytes || 0,
+      });
+    }
+  }
+  completed.sort((a, b) => a.completedAt - b.completedAt);
+  const toDelete = completed.slice(0, maxDelete).map(t => t.id);
+  return deleteTaskFiles(toDelete);
+};
+
+// 强制清理直到满足配额 (返回清理结果)
+const enforceQuota = async () => {
+  const usage = await checkQuotaUsage();
+  const quota = parseInt(config.quotaBytes || 0);
+  if (quota <= 0 || usage.bytes <= quota) return { enforced: false, usage };
+  const result = await autoCleanOldest(quota);
+  const after = await checkQuotaUsage();
+  return {
+    enforced: true,
+    freedBytes: result.freedTotal,
+    deletedCount: result.deleted.length,
+    before: usage,
+    after,
+  };
+};
+
+// ══════════════════════════════════════════════════════════════════
 // 模块 5: HTTP 请求处理 (路由 + 静态文件)
 // ══════════════════════════════════════════════════════════════════
 // ── request handler ───────────────────────────────────────────────────
@@ -1355,6 +1505,30 @@ const handle = async (req, res) => {
       } catch (e) {
         sendJSON(res, 500, { error: '读取目录失败: ' + e.message });
       }
+    }
+    // ── quota (磁盘配额检查 + 自动清理, v0.4.0 新增) ─────────────
+    else if (pathname === '/api/quota' && req.method === 'GET') {
+      try {
+        const usage = await checkQuotaUsage();
+        sendJSON(res, 200, usage);
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
+    else if (pathname === '/api/quota/clean' && req.method === 'POST') {
+      // POST /api/quota/clean  -> 手动触发自动清理 (超配额才生效)
+      try {
+        const result = await enforceQuota();
+        sendJSON(res, 200, result);
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
+    else if (pathname === '/api/quota/size' && req.method === 'GET') {
+      // GET /api/quota/size?value=50G  -> 把人类可读尺寸解析为字节数
+      const u = new URL(req.url, 'http://localhost');
+      const v = u.searchParams.get('value') || '';
+      sendJSON(res, 200, { value: v, bytes: parseSizeString(v) });
     }
     // ── play: 播放已完成任务的视频文件 ──────────────────────────
     else if (pathname.startsWith('/api/play/') && req.method === 'GET') {

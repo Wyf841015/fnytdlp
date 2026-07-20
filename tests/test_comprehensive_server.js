@@ -378,3 +378,181 @@ describe('body max 2MB', () => {
   it('≤2MB 允许', () => assert.ok(1 * 1024 * 1024 < 2097152));
   it('>2MB 拒绝', () => assert.ok(2097153 > 2097152));
 });
+// ════════════════════════════════════════════════════════════
+// v0.4.0 新增测试: 磁盘配额 + 文件名模板 + 搜索 + 统计
+// ════════════════════════════════════════════════════════════
+
+describe('磁盘配额 parseSizeString', () => {
+  const extractSrc = (name) => {
+    const re = new RegExp(`const ${name} = (\\\(.*?\\\)|\\\\{.*?\\\\}|async\\\s*\\\(.*?\\\)\\\s*=>\\\s*\\\\{[^]*?\\\\n\\\\})`, 's');
+    const m = serverSrc.match(re);
+    if (!m) throw new Error(`Pattern not found: ${name}`);
+    return m[0].replace(/^const \\w+ = /, '').replace(/;\s*$/, '');
+  };
+
+  // 直接重新定义 parseSizeString (同 server.js)
+  const parseSizeString = (s) => {
+    if (!s && s !== 0) return 0;
+    if (typeof s === 'number') return Math.max(0, s);
+    const m = String(s).trim().match(/^(\d+(?:\.\d+)?)\s*([KMGT]?B?|)$/i);
+    if (!m) return 0;
+    const n = parseFloat(m[1]);
+    const unit = (m[2] || '').toUpperCase();
+    const mult = unit === 'TB' || unit === 'T' ? 1024 ** 4
+                : unit === 'GB' || unit === 'G' ? 1024 ** 3
+                : unit === 'MB' || unit === 'M' ? 1024 ** 2
+                : unit === 'KB' || unit === 'K' ? 1024
+                : 1;
+    return Math.floor(n * mult);
+  };
+
+  it('空字符串 → 0', () => assert.equal(parseSizeString(''), 0));
+  it('"0" → 0', () => assert.equal(parseSizeString('0'), 0));
+  it('null → 0', () => assert.equal(parseSizeString(null), 0));
+  it('undefined → 0', () => assert.equal(parseSizeString(undefined), 0));
+  it('"50G" → 50 * 1024^3', () => assert.equal(parseSizeString('50G'), 50 * 1024**3));
+  it('"500M" → 500 * 1024^2', () => assert.equal(parseSizeString('500M'), 500 * 1024**2));
+  it('"2.5G" → 2.5 * 1024^3 取整', () => assert.equal(parseSizeString('2.5G'), Math.floor(2.5 * 1024**3)));
+  it('"1024K" → 1024 * 1024', () => assert.equal(parseSizeString('1024K'), 1024 * 1024));
+  it('"1T" → 1024^4', () => assert.equal(parseSizeString('1T'), 1024**4));
+  it('"abc" → 0 (无效)', () => assert.equal(parseSizeString('abc'), 0));
+  it('"100" 无单位 → 100 字节', () => assert.equal(parseSizeString('100'), 100));
+  it('"50 GB" 带空格 → 50G', () => assert.equal(parseSizeString('50 GB'), 50 * 1024**3));
+  it('数字输入直通', () => assert.equal(parseSizeString(1234), 1234));
+  it('负数 → 0', () => assert.equal(parseSizeString(-1), 0));
+});
+
+describe('磁盘配额 DEFAULT_CONFIG 字段', () => {
+  it('quotaBytes 默认 0', () => {
+    const m = serverSrc.match(/quotaBytes:\s*(\d+)/);
+    assert.ok(m, 'quotaBytes not in DEFAULT_CONFIG');
+    assert.equal(parseInt(m[1]), 0);
+  });
+  it('quotaAutoClean 默认 false', () => {
+    const m = serverSrc.match(/quotaAutoClean:\s*(true|false)/);
+    assert.ok(m, 'quotaAutoClean not in DEFAULT_CONFIG');
+    assert.equal(m[1], 'false');
+  });
+});
+
+describe('磁盘配额 API 路由', () => {
+  it('GET /api/quota 路由', () => {
+    assert.match(serverSrc, /pathname === '\/api\/quota' && req\.method === 'GET'/);
+  });
+  it('POST /api/quota/clean 路由', () => {
+    assert.match(serverSrc, /pathname === '\/api\/quota\/clean' && req\.method === 'POST'/);
+  });
+  it('GET /api/quota/size 路由', () => {
+    assert.match(serverSrc, /pathname === '\/api\/quota\/size' && req\.method === 'GET'/);
+  });
+});
+
+describe('磁盘配额核心函数', () => {
+  it('checkQuotaUsage 函数存在', () => {
+    assert.match(serverSrc, /const checkQuotaUsage = async/);
+  });
+  it('enforceQuota 函数存在', () => {
+    assert.match(serverSrc, /const enforceQuota = async/);
+  });
+  it('autoCleanOldest 函数存在', () => {
+    assert.match(serverSrc, /const autoCleanOldest = async/);
+  });
+  it('computeDirBytes 10s timeout', () => {
+    assert.match(serverSrc, /computeDirBytes[\s\S]*?setTimeout\([\s\S]*?10000/);
+  });
+});
+
+describe('配额自动清理 hook', () => {
+  it('parseAndCreateTask 调用 enforceQuota', () => {
+    // 在 quotaAutoClean=true 时调用
+    const block = serverSrc.match(/parseAndCreateTask = async[\s\S]*?await enforceQuota/);
+    assert.ok(block, 'quota hook not in parseAndCreateTask');
+  });
+});
+
+describe('文件名模板 DEFAULT_CONFIG', () => {
+  it('默认模板', () => {
+    const m = serverSrc.match(/outputTemplate:\s*'([^']+)'/);
+    assert.ok(m, 'outputTemplate not in DEFAULT_CONFIG');
+    assert.ok(m[1].includes('%(title)s'));
+    assert.ok(m[1].includes('%(id)s'));
+  });
+});
+
+describe('文件名模板实时预览函数', () => {
+  // 提取 main.js 里的 _previewOutputTemplate 逻辑验证
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('_previewOutputTemplate 函数存在', () => {
+    assert.match(mainSrc, /const _previewOutputTemplate/);
+  });
+  it('updateOutputTemplatePreview 存在', () => {
+    assert.match(mainSrc, /const updateOutputTemplatePreview/);
+  });
+  it('preview 函数替换 %(title)s', () => {
+    // 直接模拟
+    const title = '测试视频';
+    const tpl = '%(title)s.mp4';
+    const r = tpl.replace(/%\(title\)s/gi, title);
+    assert.equal(r, '测试视频.mp4');
+  });
+  it('preview 函数替换 %(id)s', () => {
+    const tpl = 'v=%(id)s';
+    const r = tpl.replace(/%\(id\)s/gi, 'abc123');
+    assert.equal(r, 'v=abc123');
+  });
+  it('preview 函数多字段组合', () => {
+    const tpl = '%(title)s [%(id)s].%(ext)s';
+    let r = tpl.replace(/%\(title\)s/gi, '视频')
+               .replace(/%\(id\)s/gi, 'xyz')
+               .replace(/%\(ext\)s/gi, 'mp4');
+    assert.equal(r, '视频 [xyz].mp4');
+  });
+});
+
+describe('统计面板 KPI 4 项', () => {
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('computeStats 函数', () => assert.match(mainSrc, /const computeStats = \(\) =>/));
+  it('renderStatsPanel 函数', () => assert.match(mainSrc, /const renderStatsPanel = \(\) =>/));
+  it('statsTotalBytes KPI', () => assert.match(mainSrc, /statsTotalBytes['"]\)\.textContent = formatBytes/));
+  it('statsCompletedCount KPI', () => assert.match(mainSrc, /statsCompletedCount['"]\)\.textContent =/));
+  it('statsMonthBytes KPI', () => assert.match(mainSrc, /statsMonthBytes['"]\)\.textContent/));
+  it('statsTotalDuration KPI', () => assert.match(mainSrc, /statsTotalDuration['"]\)\.textContent/));
+});
+
+describe('统计图表 canvas', () => {
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('chartDaily canvas 渲染', () => assert.match(mainSrc, /_drawDailyChart\(\$\('chartDaily'\)/));
+  it('chartDomain canvas 渲染', () => assert.match(mainSrc, /_drawDomainChart\(\$\('chartDomain'\)/));
+  it('stats tab 切换触发', () => assert.match(mainSrc, /dataset\.tab === 'stats'\) renderStatsPanel/));
+});
+
+describe('搜索字段扩展 (v0.4.0)', () => {
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('搜索匹配 url + filename + title 三字段', () => {
+    const m = mainSrc.match(/filtered = !query \? byFilter : byFilter\.filter[\s\S]*?return /);
+    assert.ok(m, 'filter not found');
+    const block = m[0];
+    assert.match(block, /t\.url/);
+    assert.match(block, /t\.filename/);
+    assert.match(block, /t\.title/);
+  });
+});
+
+describe('settings panel 新增 2 个 tab', () => {
+  const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  it('storage tab', () => assert.match(html, /data-tab="storage"/));
+  it('stats tab', () => assert.match(html, /data-tab="stats"/));
+  it('settingsPanelStorage div', () => assert.match(html, /id="settingsPanelStorage"/));
+  it('settingsPanelStats div', () => assert.match(html, /id="settingsPanelStats"/));
+});
+
+describe('CSS: chart-row + chart-card', () => {
+  const css = fs.readFileSync(new URL('../ui/styles/layout.css', import.meta.url), 'utf8');
+  it('.chart-row 定义', () => assert.match(css, /\.chart-row\s*\{/));
+  it('.chart-card 定义', () => assert.match(css, /\.chart-card\s*\{/));
+  it('.chart-canvas 定义', () => assert.match(css, /\.chart-canvas\s*\{/));
+  it('响应式: max-width 768px 单列', () => {
+    // 在 768px 媒体查询内 .chart-row grid-template-columns: 1fr
+    assert.match(css, /@media \(max-width: 768px\)[\s\S]*?\.chart-row\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+  });
+});

@@ -293,6 +293,8 @@
           <button class="settings-tab active" data-tab="basic" role="tab" aria-selected="true" aria-controls="settingsPanelBasic">⚙️ 基本</button>
           <button class="settings-tab" data-tab="advanced" role="tab" aria-selected="false" aria-controls="settingsPanelAdvanced">🔧 高级</button>
           <button class="settings-tab" data-tab="filter" role="tab" aria-selected="false" aria-controls="settingsPanelFilter">🔍 过滤</button>
+          <button class="settings-tab" data-tab="storage" role="tab" aria-selected="false" aria-controls="settingsPanelStorage">💾 存储</button>
+          <button class="settings-tab" data-tab="stats" role="tab" aria-selected="false" aria-controls="settingsPanelStats">📊 统计</button>
         </div>
         <div class="settings-panels">
           <!-- 基本 -->
@@ -425,6 +427,75 @@
               <label class="form-label">复杂过滤 (--match-filters)</label>
               <input class="input" id="setMatchFilters" placeholder="例: !is_live & like_count&gt;?100 & duration&lt;600">
               <div class="form-hint">用 & 组合多个条件, 字段参考 yt-dlp OUTPUT TEMPLATE</div>
+            </div>
+          </div>
+
+          <!-- 存储 (v0.4.0 配额管理) -->
+          <div class="settings-panel" id="settingsPanelStorage" data-panel="storage" role="tabpanel" hidden>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label class="form-label">磁盘配额 (下载目录容量上限)</label>
+                <div class="input-group">
+                  <input class="input" id="setQuotaSize" placeholder="例: 50G / 500M / 0 (0=不限)" style="flex:1">
+                  <button class="btn btn-ghost" onclick="checkQuotaNow()" type="button">📊 立即检查</button>
+                </div>
+                <div class="form-hint" id="quotaUsageHint">点击"立即检查"查看当前用量</div>
+              </div>
+              <div class="form-group form-group-half">
+                <label class="form-label">&nbsp;</label>
+                <label class="form-label form-label-inline"><input type="checkbox" id="setQuotaAutoClean"> 超额时自动清理</label>
+                <div class="form-hint">启用后, 每次添加新任务前自动删除最旧已完成任务直到满足配额</div>
+                <button class="btn btn-ghost" onclick="cleanQuotaNow()" type="button" style="margin-top:6px">🧹 立即清理</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">文件名模板 (--output, v0.4.0 实时预览)</label>
+              <input class="input" id="setOutputTemplate" placeholder="例: %(title)s [%(id)s].%(ext)s">
+              <div class="form-hint" id="outputTemplatePreview">实时预览: <span id="outputTemplatePreviewText">—</span></div>
+            </div>
+          </div>
+
+          <!-- 统计 (v0.4.0 下载历史图表) -->
+          <div class="settings-panel" id="settingsPanelStats" data-panel="stats" role="tabpanel" hidden>
+            <div class="kpi-dashboard kpi-dashboard-stats" id="statsKpiDashboard">
+              <div class="kpi-card">
+                <div class="kpi-icon">📦</div>
+                <div class="kpi-content">
+                  <div class="kpi-label">累计下载</div>
+                  <div class="kpi-value" id="statsTotalBytes">—</div>
+                </div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-icon">✅</div>
+                <div class="kpi-content">
+                  <div class="kpi-label">完成任务</div>
+                  <div class="kpi-value" id="statsCompletedCount">—</div>
+                </div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-icon">📅</div>
+                <div class="kpi-content">
+                  <div class="kpi-label">本月下载</div>
+                  <div class="kpi-value" id="statsMonthBytes">—</div>
+                </div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-icon">⏱️</div>
+                <div class="kpi-content">
+                  <div class="kpi-label">总耗时</div>
+                  <div class="kpi-value" id="statsTotalDuration">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="chart-row">
+              <div class="chart-card">
+                <div class="chart-card-header">📊 每日下载量 (近 30 天)</div>
+                <canvas id="chartDaily" class="chart-canvas" width="600" height="200"></canvas>
+              </div>
+              <div class="chart-card">
+                <div class="chart-card-header">🌐 按域名分布</div>
+                <canvas id="chartDomain" class="chart-canvas" width="600" height="200"></canvas>
+              </div>
             </div>
           </div>
         </div>
