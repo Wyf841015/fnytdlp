@@ -557,3 +557,10 @@ describe('CSS: chart-row + chart-card', () => {
     assert.match(css, /@media \(max-width: 768px\)[\s\S]*?\.chart-row\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
   });
 });
+
+describe('空状态图标居中 (v0.4.2)', () => {
+  const css = fs.readFileSync(new URL('../ui/styles/layout.css', import.meta.url), 'utf8');
+  it('.empty-icon-wrap margin: 0 auto (居中)', () => {
+    assert.match(css, /\.empty-icon-wrap\s*\{[\s\S]*?margin:\s*0 auto 20px/);
+  });
+});
