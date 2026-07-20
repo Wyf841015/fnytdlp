@@ -21,14 +21,14 @@
 - **安全**：SSRF 防护（只 http/https）/ 路径白名单 / Cookie 加密存储 / fetch 30s 超时 / 错误脱敏
 - **零运行时依赖**：纯 Node.js ESM 模块，fpk 解包即跑
 - **磁盘配额** (v0.4.0)：下载目录容量上限，超额自动清理最旧已完成任务
-- **下载历史统计** (v0.4.0)：4 个累计 KPI + 双 canvas 图表 (每日/按域名)
+- **下载历史统计** (v0.4.0)：4 个累计 KPI + 双 canvas 图表 (每日/按域名)，v0.4.1 移到独立 modal
 - **文件名模板预览** (v0.4.0)：输入 `%(title)s` 实时显示展开效果
 
 ## 安装
 
 ### 在 FnOS 应用中心安装
 
-1. 下载 `fnytdlp.fpk`（约 6.3 MB，v0.4.0）
+1. 下载 `fnytdlp.fpk`（约 6.3 MB，v0.4.1）
 2. 在飞牛NAS应用中心 → 手动安装
 3. 首次进入"设置"，配置下载路径（建议 `/vol2/1000/fnytdlp/`）
 4. 点"+"粘贴视频链接开始下载
@@ -231,6 +231,16 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 `initXxxDashboard` (幂等) / `loadTasks` (全量，结构变化) / `pollTasks` (增量，改 textContent 不 innerHTML)。比 `setInterval(loadTasks)` 强：无 focus 丢失 / 无 scroll 位置重置 / GPU 加速。
 
 ## 版本历史
+
+### v0.4.1 (2026-07-20)
+
+**UI 调整: 统计 tab 从设置菜单移到独立 modal**
+
+- 把 v0.4.0 的「📊 统计」从 settings 内嵌 tab 拆成独立 modal
+- toolbar 末尾新增 📊 统计按钮 (跟 ⚙ 设置 / 🍪 Cookie / 🔔 订阅同一级别)
+- settings tabs 减少: ⚙ 基本 / 🔧 高级 / 🔍 过滤 / 💾 存储 (4 项)
+- 独立 modal 设计: modal-header + 4 个累计 KPI + 双 canvas 图表, 关闭按钮
+- 打开统计 modal 立即渲染一次 renderStatsPanel
 
 ### v0.4.0 (2026-07-20)
 

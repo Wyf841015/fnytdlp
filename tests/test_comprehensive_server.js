@@ -523,7 +523,7 @@ describe('统计图表 canvas', () => {
   const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
   it('chartDaily canvas 渲染', () => assert.match(mainSrc, /_drawDailyChart\(\$\('chartDaily'\)/));
   it('chartDomain canvas 渲染', () => assert.match(mainSrc, /_drawDomainChart\(\$\('chartDomain'\)/));
-  it('stats tab 切换触发', () => assert.match(mainSrc, /dataset\.tab === 'stats'\) renderStatsPanel/));
+  it('showStatsModal 独立入口', () => assert.match(mainSrc, /const showStatsModal = \(\) =>[\s\S]*?renderStatsPanel/));
 });
 
 describe('搜索字段扩展 (v0.4.0)', () => {
@@ -538,12 +538,13 @@ describe('搜索字段扩展 (v0.4.0)', () => {
   });
 });
 
-describe('settings panel 新增 2 个 tab', () => {
+describe('settings panel 新增 1 个 tab (storage)', () => {
   const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
   it('storage tab', () => assert.match(html, /data-tab="storage"/));
-  it('stats tab', () => assert.match(html, /data-tab="stats"/));
+  it('没有 stats tab (已挪到独立 modal)', () => assert.doesNotMatch(html, /data-tab="stats"/));
   it('settingsPanelStorage div', () => assert.match(html, /id="settingsPanelStorage"/));
-  it('settingsPanelStats div', () => assert.match(html, /id="settingsPanelStats"/));
+  it('statsModal 独立 modal', () => assert.match(html, /id="statsModal"/));
+  it('toolbar 有统计按钮', () => assert.match(html, /onclick="showStatsModal\(\)"/));
 });
 
 describe('CSS: chart-row + chart-card', () => {

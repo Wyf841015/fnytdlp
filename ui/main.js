@@ -1496,14 +1496,13 @@ const renderStatsPanel = () => {
 };
 window.renderStatsPanel = renderStatsPanel;
 
-// 监听 storage/stats tab 切换触发 (initSettingsTabs 在 DOMContentLoaded 调用,
+// 监听 storage tab 切换触发 (initSettingsTabs 在 DOMContentLoaded 调用,
 // 这里直接 attach click listener 即可)
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('#settingsModal .settings-tab').forEach(t => {
     if (t.dataset._statsHooked) return;
     t.dataset._statsHooked = '1';
     t.addEventListener('click', () => {
-      if (t.dataset.tab === 'stats') renderStatsPanel();
       if (t.dataset.tab === 'storage') {
         // 切到 storage 时显示已配的 quota 字节回填到输入框 (只读显示)
         const cfg = window._config || {};
@@ -1515,6 +1514,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+
+// 独立 stats modal 入口 (v0.4.1: 跟设置同一级别)
+const showStatsModal = () => {
+  showModal('statsModal');
+  // 打开后立即渲染一次
+  renderStatsPanel();
+};
+window.showStatsModal = showStatsModal;
 
 // ── Cookie Modal (多网站) ─────────────────────────────────────────
 const renderCookieList = (cookies) => {
