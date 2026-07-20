@@ -343,6 +343,18 @@ describe('formatDuration (前端)', () => {
   });
   it('零', () => assert.equal(formatDuration(0), '-'));
   it('边界', () => assert.equal(formatDuration(null), '-'));
+  // v0.5.0: verbose 模式 (01h23m45s) - 在测试环境 mock window._config
+  it('verbose 模式', () => {
+    const origCfg = global.window;
+    global.window = { _config: { etaVerbose: true } };
+    try {
+      assert.equal(formatDuration(83), '1m23s');
+      assert.equal(formatDuration(3661), '01h01m01s');
+      assert.equal(formatDuration(45), '45s');
+    } finally {
+      global.window = origCfg;
+    }
+  });
 });
 
 describe('esc (HTML)', () => {
@@ -562,5 +574,245 @@ describe('空状态图标居中 (v0.4.2)', () => {
   const css = fs.readFileSync(new URL('../ui/styles/layout.css', import.meta.url), 'utf8');
   it('.empty-icon-wrap margin: 0 auto (居中)', () => {
     assert.match(css, /\.empty-icon-wrap\s*\{[\s\S]*?margin:\s*0 auto 20px/);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// v0.5.0 新增测试: 视频裁剪 + aria2c + 转码 + 速度模板 + 主题跟随 + ETA + yt-dlp 更新 + 重复检测 + 任务标签 + 导入配置
+// ════════════════════════════════════════════════════════════
+
+describe('v0.5.0 DEFAULT_CONFIG 新字段', () => {
+  it('downloadSections 默认空', () => {
+    assert.match(serverSrc, /downloadSections:\s*''/);
+  });
+  it('forceKeyframesAtCuts 默认 false', () => {
+    assert.match(serverSrc, /forceKeyframesAtCuts:\s*false/);
+  });
+  it('useAria2c 默认 auto', () => {
+    assert.match(serverSrc, /useAria2c:\s*'auto'/);
+  });
+  it('aria2cConnections 默认 16', () => {
+    assert.match(serverSrc, /aria2cConnections:\s*16/);
+  });
+  it('recodeVideo 默认空', () => {
+    assert.match(serverSrc, /recodeVideo:\s*''/);
+  });
+  it('etaVerbose 默认 false', () => {
+    assert.match(serverSrc, /etaVerbose:\s*false/);
+  });
+  it('themeFollowSystem 默认 false', () => {
+    assert.match(serverSrc, /themeFollowSystem:\s*false/);
+  });
+  it('checkYtDlpUpdate 默认 false', () => {
+    assert.match(serverSrc, /checkYtDlpUpdate:\s*false/);
+  });
+  it('speedSchedule 默认空数组', () => {
+    assert.match(serverSrc, /speedSchedule:\s*\[\]/);
+  });
+});
+
+describe('v0.5.0 buildYtDlpArgs 新参数', () => {
+  it('--download-sections 注入', () => {
+    assert.match(serverSrc, /config\.downloadSections\)\s*args\.push\('--download-sections'/);
+  });
+  it('--force-keyframes-at-cuts 注入', () => {
+    assert.match(serverSrc, /forceKeyframesAtCuts\)\s*args\.push\('--force-keyframes-at-cuts'/);
+  });
+  it('--external-downloader aria2c', () => {
+    assert.match(serverSrc, /args\.push\('--external-downloader', ARIA2C_BIN\)/);
+  });
+  it('--external-downloader-args aria2c 配置', () => {
+    assert.match(serverSrc, /args\.push\('--external-downloader-args'/);
+  });
+  it('--recode-video 注入', () => {
+    assert.match(serverSrc, /config\.recodeVideo\)\s*args\.push\('--recode-video'/);
+  });
+  it('--recode-video-format 注入', () => {
+    assert.match(serverSrc, /config\.recodeFormat\)\s*args\.push\('--recode-video-format'/);
+  });
+  it('--limit-rate 来自 schedule 优先', () => {
+    // 找到 speedSchedule 限速逻辑
+    const block = serverSrc.match(/config\.speedSchedule[\s\S]*?_activeLimit/);
+    assert.ok(block, 'speedSchedule limit logic not found');
+  });
+});
+
+describe('v0.5.0 新增 API 端点', () => {
+  it('GET /api/yt-dlp/check-update', () => {
+    assert.match(serverSrc, /pathname === '\/api\/yt-dlp\/check-update'/);
+  });
+  it('POST /api/config/import-yt-dlp-conf', () => {
+    assert.match(serverSrc, /pathname === '\/api\/config\/import-yt-dlp-conf'/);
+  });
+  it('/api/health 加 aria2cExists + ytDlpLatest', () => {
+    assert.match(serverSrc, /aria2cExists:\s*fs\.existsSync\(ARIA2C_BIN\)/);
+    assert.match(serverSrc, /ytDlpLatest:\s*_ytDlpLatestVersion/);
+  });
+});
+
+describe('v0.5.0 archive 重复检测', () => {
+  it('extractVideoIdFromUrl YouTube watch?v=', () => {
+    assert.match(serverSrc, /const extractVideoIdFromUrl = \(url\) =>/);
+    assert.match(serverSrc, /searchParams\.get\('v'\)/);
+  });
+  it('extractVideoIdFromUrl youtu.be/XXX', () => {
+    assert.match(serverSrc, /pathname\.split\('\/'\)\.filter\(Boolean\)\.pop/);
+  });
+  it('extractVideoIdFromUrl bilibili BV', () => {
+    assert.match(serverSrc, /bilibili\.com/);
+    assert.match(serverSrc, /BV\\w\+\|av\\d\+/i);
+  });
+  it('readArchiveIds 函数', () => {
+    assert.match(serverSrc, /const readArchiveIds = \(archivePath\) =>/);
+  });
+  it('POST /api/tasks 检查 archive', () => {
+    assert.match(serverSrc, /if \(config\.downloadArchive\)[\s\S]*?checkArchiveDuplicate/);
+  });
+});
+
+describe('v0.5.0 parseYtDlpConf 白名单', () => {
+  it('parseYtDlpConf 函数存在', () => {
+    assert.match(serverSrc, /const parseYtDlpConf = \(content\) =>/);
+  });
+  it('KEY_MAP 包含 format/output/limit-rate 等', () => {
+    const block = serverSrc.match(/const KEY_MAP = \{[\s\S]*?\};/);
+    assert.ok(block, 'KEY_MAP not found');
+    assert.match(block[0], /'format'/);
+    assert.match(block[0], /'output'/);
+    assert.match(block[0], /'limit-rate'/);
+    assert.match(block[0], /'proxy'/);
+    assert.match(block[0], /'no-playlist'/);
+    assert.match(block[0], /'recode-video'/);
+    assert.match(block[0], /'download-sections'/);
+  });
+  it('parseYtDlpConf 注释过滤 (#)', () => {
+    assert.match(serverSrc, /replace\(\/\^\\s\*#\.\*\$\/, ''\)/);
+  });
+  it('parseYtDlpConf 引号去除', () => {
+    assert.match(serverSrc, /replace\(\/\^\["'\]|\["'\]\$\/g, ''\)/);
+  });
+});
+
+describe('v0.5.0 checkYtDlpUpdate', () => {
+  it('checkYtDlpUpdate 函数', () => {
+    assert.match(serverSrc, /const checkYtDlpUpdate = async \(\) =>/);
+  });
+  it('GitHub API 调用', () => {
+    assert.match(serverSrc, /api\.github\.com\/repos\/yt-dlp\/yt-dlp\/releases\/latest/);
+  });
+  it('6h 缓存', () => {
+    assert.match(serverSrc, /6 \* 3600 \* 1000/);
+  });
+  it('后台 setTimeout 触发', () => {
+    assert.match(serverSrc, /setTimeout\(\(\) => \{ checkYtDlpUpdate\(\)\.catch/);
+  });
+});
+
+describe('v0.5.0 任务标签字段', () => {
+  it('createTask 加 tags 字段', () => {
+    const block = serverSrc.match(/const task = \{[\s\S]*?options: \{ \.\.\.options \}/);
+    assert.ok(block, 'task object not found');
+    assert.match(block[0], /tags:/);
+  });
+  it('tags 数组上限 10', () => {
+    assert.match(serverSrc, /slice\(0, 10\)/);
+  });
+});
+
+describe('v0.5.0 视频格式 tab', () => {
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('renderTasks 扩展 filter video/audio', () => {
+    assert.match(mainSrc, /currentFilter === 'video' \|\| currentFilter === 'audio'/);
+  });
+  it('video ext 列表', () => {
+    assert.match(mainSrc, /\/\^\(mp4\|mkv\|webm\|m4v\|flv\|avi\|mov\)\$/);
+  });
+  it('audio ext 列表', () => {
+    assert.match(mainSrc, /\/\^\(mp3\|m4a\|opus\|flac\|wav\|aac\|ogg\)\$/);
+  });
+  it('countVideo + countAudio', () => {
+    assert.match(mainSrc, /countVideo['"]\)\.textContent/);
+    assert.match(mainSrc, /countAudio['"]\)\.textContent/);
+  });
+});
+
+describe('v0.5.0 复制 yt-dlp 命令', () => {
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('copyYtDlpCmd 函数', () => {
+    assert.match(mainSrc, /const copyYtDlpCmd = async \(id\) =>/);
+  });
+  it('clipboard API', () => {
+    assert.match(mainSrc, /navigator\.clipboard\.writeText/);
+  });
+});
+
+describe('v0.5.0 速度模板 UI', () => {
+  const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  it('speedScheduleList 容器', () => assert.match(html, /id="speedScheduleList"/));
+  it('addSpeedSchedule 按钮', () => assert.match(html, /onclick="addSpeedSchedule\(\)"/));
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('renderSpeedSchedule 函数', () => assert.match(mainSrc, /const renderSpeedSchedule = \(list\) =>/));
+  it('collectSpeedSchedule 函数', () => assert.match(mainSrc, /const collectSpeedSchedule = \(\) =>/));
+});
+
+describe('v0.5.0 aria2c UI', () => {
+  const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  it('setUseAria2c select', () => assert.match(html, /id="setUseAria2c"/));
+  it('setAria2cConnections input', () => assert.match(html, /id="setAria2cConnections"/));
+  it('aria2cHint 检测提示', () => assert.match(html, /id="aria2cHint"/));
+});
+
+describe('v0.5.0 视频裁剪 UI', () => {
+  const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  it('setDownloadSections', () => assert.match(html, /id="setDownloadSections"/));
+  it('setForceKeyframesAtCuts', () => assert.match(html, /id="setForceKeyframesAtCuts"/));
+});
+
+describe('v0.5.0 文件名模板预设', () => {
+  const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  it('applyTemplatePreset 调用', () => assert.match(html, /onclick="applyTemplatePreset\(/));
+  it('默认模板按钮', () => assert.match(html, /📺 默认/));
+  it('按作者分目录按钮', () => assert.match(html, /📁 按作者分目录/));
+  it('仅标题按钮', () => assert.match(html, /📝 仅标题/));
+  it('播放列表编号按钮', () => assert.match(html, /🔢 播放列表编号/));
+});
+
+describe('v0.5.0 导入 yt-dlp.conf UI', () => {
+  const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  it('ytDlpConfText textarea', () => assert.match(html, /id="ytDlpConfText"/));
+  it('importYtDlpConf 按钮', () => assert.match(html, /onclick="importYtDlpConf\(\)"/));
+});
+
+describe('v0.5.0 yt-dlp 更新检查 UI', () => {
+  const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  it('setCheckYtDlpUpdate 复选框', () => assert.match(html, /id="setCheckYtDlpUpdate"/));
+  it('checkYtDlpUpdateNow 按钮', () => assert.match(html, /onclick="checkYtDlpUpdateNow\(\)"/));
+  it('ytDlpVersionHint 显示', () => assert.match(html, /id="ytDlpVersionHint"/));
+});
+
+describe('v0.5.0 任务标签 UI', () => {
+  const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  it('addTags 输入框', () => assert.match(html, /id="addTags"/));
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('submitAddTask 提取 tags', () => assert.match(mainSrc, /options\.tags = tagInput\.split/));
+});
+
+describe('v0.5.0 主题跟随系统', () => {
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('matchMedia prefers-color-scheme', () => {
+    assert.match(mainSrc, /prefers-color-scheme:\s*dark/);
+  });
+  it('applySystemTheme 函数', () => assert.match(mainSrc, /const applySystemTheme = \(\) =>/));
+  it('init 阶段加载 _config', () => assert.match(mainSrc, /window\._config = await API\.get\('\/api\/config'\)/));
+});
+
+describe('v0.5.0 ETA verbose', () => {
+  const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
+  it('formatDuration 支持 verbose 模式', () => {
+    assert.match(mainSrc, /window\._config.*etaVerbose/s);
+  });
+  it('verbose 模式输出 h/m/s 拼接', () => {
+    // 模板字符串: `${pad2(h)}h${pad2(m)}m${pad2(s)}s`
+    assert.match(mainSrc, /pad2\(h\).{0,5}h.{0,5}pad2\(m\).{0,5}m.{0,5}pad2\(s\).{0,5}s/);
   });
 });

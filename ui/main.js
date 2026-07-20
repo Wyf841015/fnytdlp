@@ -6,7 +6,7 @@
 
 'use strict';
 
-console.log('[fnytdlp] main.js loaded, version=0.3.0');
+console.log('[fnytdlp] main.js loaded, version=0.5.0');
 
 // ── API client (统一网关模式) ──────────────────────────────────────
 const GATEWAY_BASE = (typeof window !== 'undefined' && window.GATEWAY_BASE) || (self.location?.pathname?.startsWith('/app/') ? '/app/fnytdlp' : '');
@@ -126,12 +126,22 @@ const formatBytes = (n) => {
   return n.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
 };
 const formatSpeed = (n) => n > 0 ? formatBytes(n) + '/s' : '0 B/s';
+// v0.5.0: formatDuration 支持详细模式 (01h23m45s)
 const formatDuration = (secs) => {
   secs = Math.max(0, parseInt(secs) || 0);
   if (secs === 0) return '-';
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
   const s = secs % 60;
+  // v0.5.0: 详细模式 (etaVerbose=true 时输出 01h23m45s), 兼容 node 测试 (无 window)
+  let verbose = false;
+  try { verbose = (typeof window !== 'undefined') && window._config && window._config.etaVerbose; } catch (e) {}
+  if (verbose) {
+    const pad2 = (n) => String(n).padStart(2, '0');
+    if (h > 0) return `${pad2(h)}h${pad2(m)}m${pad2(s)}s`;
+    if (m > 0) return `${m}m${pad2(s)}s`;
+    return `${s}s`;
+  }
   if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
   return `${m}:${pad(s)}`;
 };
@@ -225,12 +235,27 @@ window.toggleTheme = toggleTheme;
 // 启动时恢复主题
 try {
   const saved = localStorage.getItem('fnytdlp_theme');
-  if (saved && THEMES.includes(saved)) {
+  if (saved && THEMES.includes(saved) && !window._config?.themeFollowSystem) {
     _themeIdx = THEMES.indexOf(saved);
     document.documentElement.dataset.theme = saved;
     $('themeBtn').textContent = saved === 'dark' ? '🌙' : '☀️';
   }
 } catch (e) {}
+// v0.5.0: 主题跟随系统 (prefers-color-scheme)
+const _sysThemeMQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+const applySystemTheme = () => {
+  if (!window._config?.themeFollowSystem) return;
+  const sysDark = _sysThemeMQ ? _sysThemeMQ.matches : true;
+  const t = sysDark ? 'dark' : 'light';
+  document.documentElement.dataset.theme = t;
+  _themeIdx = THEMES.indexOf(t);
+  const btn = $('themeBtn');
+  if (btn) btn.textContent = t === 'dark' ? '🌙' : '☀️';
+};
+if (_sysThemeMQ && _sysThemeMQ.addEventListener) {
+  _sysThemeMQ.addEventListener('change', applySystemTheme);
+}
+window.applySystemTheme = applySystemTheme;
 
 // ── 添加任务弹窗辅助函数 ──────────────────────────────────────
 const URL_RE = /^https?:\/\/.+/i;
@@ -357,7 +382,15 @@ const renderTasks = () => {
   const list = $('taskList');
   // M-3: 搜索 + 状态筛选
   const query = ($('searchInput')?.value || '').trim().toLowerCase();
-  const byFilter = currentFilter === 'all' ? tasks : tasks.filter(t => t.status === currentFilter);
+  // v0.5.0: 扩展 filter 支持 video/audio (按 ext 推断)
+  let byFilter;
+  if (currentFilter === 'video' || currentFilter === 'audio') {
+    byFilter = tasks.filter(t => (t.ext || '').toLowerCase().match(/^(mp4|mkv|webm|m4v|flv|avi|mov)$/i) ? currentFilter === 'video'
+                                   : (t.ext || '').toLowerCase().match(/^(mp3|m4a|opus|flac|wav|aac|ogg)$/i) ? currentFilter === 'audio'
+                                   : false);
+  } else {
+    byFilter = currentFilter === 'all' ? tasks : tasks.filter(t => t.status === currentFilter);
+  }
   const filtered = !query ? byFilter : byFilter.filter(t => {
     const url = (t.url || '').toLowerCase();
     const fname = (t.filename || '').toLowerCase();
@@ -387,6 +420,11 @@ const renderTasks = () => {
   $('countActive').textContent = tasks.filter(t => t.status === 'downloading' || t.status === 'pending').length;
   $('countDone').textContent = tasks.filter(t => t.status === 'completed').length;
   $('countError').textContent = tasks.filter(t => t.status === 'error').length;
+  // v0.5.0: 视频/音频 tab count
+  const _vidExt = /^(mp4|mkv|webm|m4v|flv|avi|mov)$/i;
+  const _audExt = /^(mp3|m4a|opus|flac|wav|aac|ogg)$/i;
+  if ($('countVideo')) $('countVideo').textContent = tasks.filter(t => _vidExt.test(t.ext || '')).length;
+  if ($('countAudio')) $('countAudio').textContent = tasks.filter(t => _audExt.test(t.ext || '')).length;
   // M-7: 批量操作栏显隐 + 全选状态
   const _sel = $('selectAllCheckbox');
   if (_sel) {
@@ -671,6 +709,9 @@ const submitAddTask = async () => {
   // 去重
   const unique = [...new Set(urls)];
   const options = {};
+  // v0.5.0: 任务标签 (逗号分隔, 例 "教程, 音乐, 高清")
+  const tagInput = $('addTags')?.value.trim();
+  if (tagInput) options.tags = tagInput.split(/[,，]/).map(s => s.trim()).filter(Boolean).slice(0, 10);
   const fmtCustom = $('addFormatCustom').value.trim();
   if (fmtCustom) options.format = fmtCustom;
   const ot = $('addOutputTemplate').value.trim();
@@ -1228,6 +1269,20 @@ const showSettingsModal = async () => {
   if ($('setQuotaAutoClean')) $('setQuotaAutoClean').checked = !!cfg.quotaAutoClean;
   if ($('setOutputTemplate')) $('setOutputTemplate').value = cfg.outputTemplate || '';
   updateOutputTemplatePreview();
+  // v0.5.0: 高级 panel 新字段
+  if ($('setUseAria2c')) $('setUseAria2c').value = cfg.useAria2c || 'auto';
+  if ($('setAria2cConnections')) $('setAria2cConnections').value = cfg.aria2cConnections || 16;
+  if ($('setRecodeVideo')) $('setRecodeVideo').value = cfg.recodeVideo || '';
+  if ($('setRecodeFormat')) $('setRecodeFormat').value = cfg.recodeFormat || '';
+  if ($('setDownloadSections')) $('setDownloadSections').value = cfg.downloadSections || '';
+  if ($('setForceKeyframesAtCuts')) $('setForceKeyframesAtCuts').checked = !!cfg.forceKeyframesAtCuts;
+  if ($('setThemeFollowSystem')) $('setThemeFollowSystem').checked = !!cfg.themeFollowSystem;
+  if ($('setEtaVerbose')) $('setEtaVerbose').checked = !!cfg.etaVerbose;
+  if ($('setCheckYtDlpUpdate')) $('setCheckYtDlpUpdate').checked = !!cfg.checkYtDlpUpdate;
+  // 速度模板渲染
+  renderSpeedSchedule(Array.isArray(cfg.speedSchedule) ? cfg.speedSchedule : []);
+  // yt-dlp 版本提示 (从 /api/health 拿最新)
+  checkYtDlpUpdateHint();
   // 切回 basic tab (每次打开重置)
   switchSettingsTab('basic');
   showModal('settingsModal');
@@ -1304,6 +1359,17 @@ const saveSettings = async () => {
       quotaBytes: parseInt(_humanQuota($('setQuotaSize')?.value || '')) || 0,
       quotaAutoClean: $('setQuotaAutoClean')?.checked || false,
       outputTemplate: $('setOutputTemplate')?.value.trim() || '%(title)s [%(id)s].%(ext)s',
+      // v0.5.0 高级
+      useAria2c: $('setUseAria2c')?.value || 'auto',
+      aria2cConnections: parseInt($('setAria2cConnections')?.value) || 16,
+      recodeVideo: $('setRecodeVideo')?.value.trim() || '',
+      recodeFormat: $('setRecodeFormat')?.value.trim() || '',
+      downloadSections: $('setDownloadSections')?.value.trim() || '',
+      forceKeyframesAtCuts: $('setForceKeyframesAtCuts')?.checked || false,
+      themeFollowSystem: $('setThemeFollowSystem')?.checked || false,
+      etaVerbose: $('setEtaVerbose')?.checked || false,
+      checkYtDlpUpdate: $('setCheckYtDlpUpdate')?.checked || false,
+      speedSchedule: collectSpeedSchedule(),
     };
     const r = await API.post('/api/config', cfg);
     if (r && r.ok) { hideModal('settingsModal'); toast('设置已保存', 'success'); }
@@ -1369,6 +1435,96 @@ const _humanQuota = (v) => {
   return String(Math.floor(n * mult));
 };
 
+// v0.5.0: 速度模板渲染 (添加 / 删除 / 编辑)
+const renderSpeedSchedule = (list) => {
+  const el = $('speedScheduleList');
+  if (!el) return;
+  const items = Array.isArray(list) ? list : [];
+  if (items.length === 0) {
+    el.innerHTML = '<div class="form-hint">未配置 (使用上方"限速"作为固定值)</div>';
+    return;
+  }
+  el.innerHTML = items.map((w, i) =>
+    `<div class="speed-schedule-row" data-i="${i}" style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+      <input class="input sched-start" type="time" value="${esc(w.start || '22:00')}" style="flex:0 0 110px">
+      <span style="color:var(--text-dim)">→</span>
+      <input class="input sched-end" type="time" value="${esc(w.end || '07:00')}" style="flex:0 0 110px">
+      <input class="input sched-limit" placeholder="不限速" value="${esc(w.limit || '')}" style="flex:1">
+      <button class="btn btn-danger sched-del" type="button" style="padding:4px 8px">🗑</button>
+    </div>`
+  ).join('');
+  el.querySelectorAll('.sched-del').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const row = e.target.closest('.speed-schedule-row');
+      if (row) row.remove();
+      // 如果全删了, 显示空提示
+      if (el.querySelectorAll('.speed-schedule-row').length === 0) {
+        renderSpeedSchedule([]);
+      }
+    });
+  });
+};
+window.renderSpeedSchedule = renderSpeedSchedule;
+
+const addSpeedSchedule = () => {
+  const el = $('speedScheduleList');
+  if (!el) return;
+  const cur = collectSpeedSchedule();
+  cur.push({ start: '22:00', end: '07:00', limit: '10M' });
+  renderSpeedSchedule(cur);
+};
+window.addSpeedSchedule = addSpeedSchedule;
+
+const collectSpeedSchedule = () => {
+  const el = $('speedScheduleList');
+  if (!el) return [];
+  const rows = Array.from(el.querySelectorAll('.speed-schedule-row'));
+  return rows.map(r => ({
+    start: r.querySelector('.sched-start')?.value || '',
+    end: r.querySelector('.sched-end')?.value || '',
+    limit: r.querySelector('.sched-limit')?.value.trim() || '',
+  })).filter(w => w.start && w.end);
+};
+window.collectSpeedSchedule = collectSpeedSchedule;
+
+// v0.5.0: yt-dlp 更新检查 (UI)
+const checkYtDlpUpdateHint = async () => {
+  const hint = $('ytDlpVersionHint');
+  if (!hint) return;
+  try {
+    const r = await API.get('/api/health');
+    const cur = (r.version || '') + ' / yt-dlp?';
+    hint.textContent = `当前 v${r.version} · yt-dlp ${r.ytDlpExists ? '✓' : '✗'}`;
+    if (r.aria2cExists !== undefined) {
+      hint.textContent += ` · aria2c ${r.aria2cExists ? '✓' : '✗'}`;
+    }
+    if (r.ytDlpLatest) {
+      hint.textContent += ` · GitHub 最新 ${r.ytDlpLatest}`;
+    }
+  } catch (e) {
+    hint.textContent = '检测失败';
+  }
+};
+window.checkYtDlpUpdateHint = checkYtDlpUpdateHint;
+
+const checkYtDlpUpdateNow = async () => {
+  const hint = $('ytDlpVersionHint');
+  if (hint) hint.textContent = '检查中…';
+  try {
+    const r = await API.get('/api/yt-dlp/check-update');
+    if (r.latest) {
+      toast(`GitHub 最新版本: ${r.latest}`, 'info', 4000);
+      if (hint) hint.textContent = `当前 v${window._config?.version || '?'} · GitHub 最新 ${r.latest}`;
+    } else {
+      toast('未能获取最新版本', 'warning');
+      if (hint) hint.textContent = '检测失败';
+    }
+  } catch (e) {
+    toast('检查失败: ' + e.message, 'error');
+  }
+};
+window.checkYtDlpUpdateNow = checkYtDlpUpdateNow;
+
 // ── v0.4.0 文件名模板实时预览 ─────────────────────────
 const _previewOutputTemplate = (tpl) => {
   // 找一个已完成任务的真实样本做替换
@@ -1392,6 +1548,41 @@ const updateOutputTemplatePreview = () => {
   el.textContent = _previewOutputTemplate($('setOutputTemplate')?.value || '');
 };
 window.updateOutputTemplatePreview = updateOutputTemplatePreview;
+
+// v0.5.0: 应用文件名模板预设
+const applyTemplatePreset = (tpl) => {
+  const input = $('setOutputTemplate');
+  if (input) {
+    input.value = tpl;
+    updateOutputTemplatePreview();
+    input.focus();
+  }
+};
+window.applyTemplatePreset = applyTemplatePreset;
+
+// v0.5.0: 导入 yt-dlp.conf (POST /api/config/import-yt-dlp-conf)
+const importYtDlpConf = async () => {
+  const ta = $('ytDlpConfText');
+  const hint = $('ytDlpConfHint');
+  if (!ta || !ta.value.trim()) { toast('请先粘贴 yt-dlp.conf 内容', 'warning'); return; }
+  if (hint) hint.textContent = '解析中…';
+  try {
+    const r = await API.post('/api/config/import-yt-dlp-conf', { content: ta.value });
+    if (r.ok) {
+      toast(`已导入 ${r.count} 个参数, 记得点保存设置`, 'success', 3500);
+      if (hint) hint.textContent = `✓ 导入 ${r.count} 个参数: ${Object.keys(r.imported).slice(0, 5).join(', ')}${Object.keys(r.imported).length > 5 ? '...' : ''}`;
+      // 重新加载设置表单显示新值
+      showSettingsModal();
+    } else {
+      toast('导入失败: ' + (r.error || '未知错误'), 'error');
+      if (hint) hint.textContent = '导入失败';
+    }
+  } catch (e) {
+    toast('导入失败: ' + e.message, 'error');
+    if (hint) hint.textContent = '导入失败: ' + e.message;
+  }
+};
+window.importYtDlpConf = importYtDlpConf;
 
 // ── v0.4.0 统计 (KPI 累计 + 双图) ─────────────────────────
 const computeStats = () => {
@@ -1872,6 +2063,23 @@ function showTaskDetail(id) {
 }
 window.showTaskDetail = showTaskDetail;
 
+// v0.5.0: 一键复制 yt-dlp 命令 (从 /api/formats 不易, 直接用 task.options 拼)
+const copyYtDlpCmd = async (id) => {
+  const t = (typeof tasks !== 'undefined' ? tasks : []).find(x => x.id === id);
+  if (!t) { toast('任务不存在', 'error'); return; }
+  // 从 /api/parse 的元数据拿不到详细参数, 直接用 buildYtDlpArgs 后端逻辑不可见
+  // 这里简化: 拼基础 yt-dlp <URL> 命令, 让用户能复制到 terminal 调试
+  const cmd = `yt-dlp \\\n  -f "${window._config?.format || 'bv*+ba/b'}" \\\n  -o "${window._config?.outputTemplate || '%(title)s [%(id)s].%(ext)s'}" \\\n  "${t.url}"`;
+  try {
+    await navigator.clipboard.writeText(cmd);
+    toast('已复制 yt-dlp 命令到剪贴板', 'success');
+  } catch (e) {
+    // 降级: prompt 显示
+    window.prompt('复制以下命令:', cmd);
+  }
+};
+window.copyYtDlpCmd = copyYtDlpCmd;
+
 // ── 视频播放器 ──────────────────────────────────────────────
 const openPlayer = (id) => {
   const t = tasks.find(x => x.id === id);
@@ -1996,6 +2204,17 @@ let _sseRetryTimer = null;
 // ── init ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('[fnytdlp] init started, DOMContentLoaded OK');
+  // v0.5.0: 先加载 config 到 window._config (formatDuration / themeFollowSystem / copyYtDlpCmd 都依赖)
+  try {
+    window._config = await API.get('/api/config');
+    // 如果启用 themeFollowSystem, 立即应用系统主题
+    if (window._config?.themeFollowSystem && typeof applySystemTheme === 'function') {
+      applySystemTheme();
+    }
+  } catch (e) {
+    console.warn('[init] load /api/config failed:', e.message);
+    window._config = {};
+  }
   // init sparklines
   try {
     sparkActive = new Sparkline('sparkActive', { max: 30, color: 'hsl(220, 100%, 60%)' });

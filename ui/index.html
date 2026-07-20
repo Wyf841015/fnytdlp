@@ -98,6 +98,8 @@
       <button class="tab" data-filter="downloading" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="下载中任务">下载中 <span class="count" id="countActive">0</span></button>
       <button class="tab" data-filter="completed" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="已完成任务">已完成 <span class="count" id="countDone">0</span></button>
       <button class="tab" data-filter="error" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="出错任务">出错 <span class="count" id="countError">0</span></button>
+      <button class="tab" data-filter="video" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="视频任务">🎬 视频 <span class="count" id="countVideo">0</span></button>
+      <button class="tab" data-filter="audio" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="音频任务">🎵 音频 <span class="count" id="countAudio">0</span></button>
       <div class="tab-spacer"></div>
       <div class="tab-search">
         <input type="search" id="searchInput" class="tab-search-input" placeholder="🔍 搜索 URL / 文件名..." aria-label="搜索任务">
@@ -251,6 +253,11 @@
           <label class="form-label form-label-inline"><input type="checkbox" id="addWriteThumbnail" checked> 下载缩略图</label>
           <label class="form-label form-label-inline"><input type="checkbox" id="addNoPlaylist"> 仅单视频</label>
         </div>
+        <div class="form-group">
+          <label class="form-label">任务标签 (逗号分隔, 用于筛选)</label>
+          <input class="input" id="addTags" placeholder="例: 教程, 音乐, 高清">
+          <div class="form-hint">最多 10 个标签, 用逗号分隔</div>
+        </div>
       </details>
     </div>
     <div class="modal-footer">
@@ -399,6 +406,69 @@
                 <input class="input" type="number" id="setMaxDownloads" min="0" placeholder="0=不限">
               </div>
             </div>
+            <!-- v0.5.0 速度模板 (按时段自动切换) -->
+            <div class="form-group">
+              <label class="form-label">限速模板 (按时段切换, 覆盖上方限速)</label>
+              <div id="speedScheduleList" class="speed-schedule-list"></div>
+              <button class="btn btn-ghost" type="button" onclick="addSpeedSchedule()" style="margin-top:6px">➕ 新增时段</button>
+              <div class="form-hint">例: 22:00-07:00 限速 10M, 07:00-22:00 不限速 (NAS 错峰)</div>
+            </div>
+            <!-- v0.5.0 aria2c + 转码 + 视频裁剪 -->
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label class="form-label">外部下载器 (aria2c, 大文件提速)</label>
+                <select class="input" id="setUseAria2c">
+                  <option value="auto">自动 (存在就用)</option>
+                  <option value="always">总是启用</option>
+                  <option value="never">不使用</option>
+                </select>
+                <div class="form-hint" id="aria2cHint">检测中…</div>
+              </div>
+              <div class="form-group form-group-half">
+                <label class="form-label">aria2c 连接数</label>
+                <input class="input" type="number" id="setAria2cConnections" min="1" max="64" placeholder="16">
+                <div class="form-hint">单文件并发连接, 16 为推荐</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label class="form-label">视频转码 (--recode-video)</label>
+                <input class="input" id="setRecodeVideo" placeholder="例: mp4 / mkv / mp4,mkv (空=不转码)">
+                <div class="form-hint">需 ffmpeg, 把视频混流到指定容器</div>
+              </div>
+              <div class="form-group form-group-half">
+                <label class="form-label">转码容器优先级</label>
+                <input class="input" id="setRecodeFormat" placeholder="例: mp4">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label class="form-label">视频裁剪 (--download-sections)</label>
+                <input class="input" id="setDownloadSections" placeholder="例: 00:00:30-00:05:00 或 *00:00:30-00:05:00 (空=不裁剪)">
+                <div class="form-hint">从 30s 截到 5min. 加 * 表示对所有格式生效</div>
+              </div>
+              <div class="form-group form-group-half">
+                <label class="form-label">&nbsp;</label>
+                <label class="form-label form-label-inline"><input type="checkbox" id="setForceKeyframesAtCuts"> 裁剪精度优先 (--force-keyframes-at-cuts)</label>
+                <div class="form-hint">裁剪位置精确到关键帧, 速度略慢</div>
+              </div>
+            </div>
+            <!-- v0.5.0 UI 偏好 (主题跟随系统 + ETA 精度 + yt-dlp 更新检查) -->
+            <div class="form-row">
+              <div class="form-group form-group-half">
+                <label class="form-label">UI 偏好</label>
+                <label class="form-label form-label-inline"><input type="checkbox" id="setThemeFollowSystem"> 主题跟随系统 (prefers-color-scheme)</label>
+                <label class="form-label form-label-inline"><input type="checkbox" id="setEtaVerbose"> ETA 详细显示 (01h23m45s)</label>
+              </div>
+              <div class="form-group form-group-half">
+                <label class="form-label">yt-dlp 版本</label>
+                <div class="input-group">
+                  <span class="form-hint" id="ytDlpVersionHint" style="flex:1;padding:6px 0">检测中…</span>
+                  <button class="btn btn-ghost" type="button" onclick="checkYtDlpUpdateNow()">🔄 检查更新</button>
+                </div>
+                <label class="form-label form-label-inline"><input type="checkbox" id="setCheckYtDlpUpdate"> 启动时自动检查</label>
+              </div>
+            </div>
           </div>
 
           <!-- 过滤 -->
@@ -452,6 +522,22 @@
               <label class="form-label">文件名模板 (--output, v0.4.0 实时预览)</label>
               <input class="input" id="setOutputTemplate" placeholder="例: %(title)s [%(id)s].%(ext)s">
               <div class="form-hint" id="outputTemplatePreview">实时预览: <span id="outputTemplatePreviewText">—</span></div>
+              <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+                <button class="btn btn-ghost" type="button" onclick="applyTemplatePreset('%(title)s [%(id)s].%(ext)s')">📺 默认</button>
+                <button class="btn btn-ghost" type="button" onclick="applyTemplatePreset('%(uploader)s/%(title)s [%(id)s].%(ext)s')">📁 按作者分目录</button>
+                <button class="btn btn-ghost" type="button" onclick="applyTemplatePreset('%(title)s.%(ext)s')">📝 仅标题</button>
+                <button class="btn btn-ghost" type="button" onclick="applyTemplatePreset('%(playlist_index)02d - %(title)s [%(id)s].%(ext)s')">🔢 播放列表编号</button>
+              </div>
+            </div>
+            <!-- v0.5.0: 导入 yt-dlp.conf -->
+            <div class="form-group">
+              <label class="form-label">导入 yt-dlp 配置文件 (--option value 格式, # 开头为注释)</label>
+              <textarea class="input" id="ytDlpConfText" rows="4" placeholder="# 粘贴 ~/.config/yt-dlp/config 或 yt-dlp.conf 内容&#10;--format bv*+ba/b&#10;--output %(title)s [%(id)s].%(ext)s&#10;--write-subs&#10;--proxy http://127.0.0.1:7890"></textarea>
+              <div style="margin-top:6px;display:flex;gap:6px">
+                <button class="btn btn-primary" type="button" onclick="importYtDlpConf()">📥 解析并导入</button>
+                <button class="btn btn-ghost" type="button" onclick="$('ytDlpConfText').value=''">🗑 清空</button>
+              </div>
+              <div class="form-hint" id="ytDlpConfHint">支持 30 个常用 yt-dlp 参数白名单, 未知参数自动忽略</div>
             </div>
           </div>
 
@@ -726,6 +812,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="openPlayer(_currentDetailTaskId)" id="tdPlayBtn" style="display:none">▶ 播放</button>
+      <button class="btn btn-ghost" onclick="copyYtDlpCmd(_currentDetailTaskId)">📋 复制命令</button>
       <button class="btn btn-ghost" onclick="hideModal('taskDetailModal')">关闭</button>
       <button class="btn btn-danger" onclick="try{deleteTask(_currentDetailTaskId);hideModal('taskDetailModal')}catch(e){console.error(e)}">🗑 删除</button>
     </div>

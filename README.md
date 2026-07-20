@@ -23,12 +23,13 @@
 - **磁盘配额** (v0.4.0)：下载目录容量上限，超额自动清理最旧已完成任务
 - **下载历史统计** (v0.4.0)：4 个累计 KPI + 双 canvas 图表 (每日/按域名)，v0.4.1 移到独立 modal
 - **文件名模板预览** (v0.4.0)：输入 `%(title)s` 实时显示展开效果
+- **yt-dlp 高级参数** (v0.5.0)：视频裁剪 / aria2c / 转码 / 限速模板 / 主题跟随系统 / 导入配置 / 任务标签 / 重复检测 / 文件名预设
 
 ## 安装
 
 ### 在 FnOS 应用中心安装
 
-1. 下载 `fnytdlp.fpk`（约 6.3 MB，v0.4.1）
+1. 下载 `fnytdlp.fpk`（约 6.3 MB，v0.5.0）
 2. 在飞牛NAS应用中心 → 手动安装
 3. 首次进入"设置"，配置下载路径（建议 `/vol2/1000/fnytdlp/`）
 4. 点"+"粘贴视频链接开始下载
@@ -231,6 +232,24 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 `initXxxDashboard` (幂等) / `loadTasks` (全量，结构变化) / `pollTasks` (增量，改 textContent 不 innerHTML)。比 `setInterval(loadTasks)` 强：无 focus 丢失 / 无 scroll 位置重置 / GPU 加速。
 
 ## 版本历史
+
+### v0.5.0 (2026-07-20)
+
+**8 项新功能 (yt-dlp 高级参数 + 体验增强)**
+
+- **视频裁剪** (`--download-sections` + `--force-keyframes-at-cuts`) — 截取中间片段, B 站长视频常用
+- **aria2c 外部下载器** (auto/always/never) — 大文件 16 连接提速, 自动检测 fnOS 系统 aria2c
+- **视频转码** (`--recode-video mp4`) — 下载完成后自动混流到指定容器
+- **限速模板** (按时段自动切换, 支持跨天) — 例: 22:00-07:00 限速 10M, 白天不限
+- **任务按格式筛选 tab** (🎬 视频 / 🎵 音频) — 按 ext 自动归类
+- **任务标签** (逗号分隔, 最多 10 个) — 复杂场景筛选
+- **重复下载检测** (`--download-archive` 启用时) — POST /api/tasks 检查 archive, 已下载返回 `{duplicate: true}`
+- **导入 yt-dlp.conf** (30 参数白名单 + 注释过滤) — 老用户配置一键迁移
+- **主题跟随系统** (`prefers-color-scheme`) + **ETA 详细显示** (`01h23m45s`)
+- **yt-dlp GitHub 更新检查** (6h 缓存, 启动后台触发) + **一键复制 yt-dlp 命令**
+- **文件名模板预设** (默认/按作者分目录/仅标题/播放列表编号)
+- 新增 2 API 端点: `GET /api/yt-dlp/check-update` + `POST /api/config/import-yt-dlp-conf`
+- 测试 154 → 221 (+67), 端到端验证: `/api/health` aria2cExists ✓ + archive duplicate ✓ + yt-dlp.conf import 4 参数 ✓
 
 ### v0.4.1 (2026-07-20)
 

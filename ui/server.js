@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { applyLine as _applyProgressLine, newTask as _newProgressTask } from './util/progress-aggregator.js';
 
 // ── version (保持与 manifest 一致 ────────────────────────────────────────
-const VERSION = '0.4.1';
+const VERSION = '0.5.0';
 // ── paths ──────────────────────────────────────────────────────────────
 const PKGVAR    = process.env.TRM_PKGVAR || process.env.TRIM_PKGVAR || null;
 const APPDEST   = process.env.TRIM_APPDEST || null;
@@ -80,6 +80,8 @@ const pickYtDlpBin = () => {
 const YT_DLP_BIN = pickYtDlpBin();
 // ffmpeg 路径 (fnOS 系统自带 /usr/bin/ffmpeg, 也允许环境变量覆盖)
 const FFMPEG_BIN = process.env.FFMPEG_BIN || '/usr/bin/ffmpeg';
+// aria2c 外部下载器 (可选, 不存在时降级 yt-dlp 内置)
+const ARIA2C_BIN = process.env.ARIA2C_BIN || '/usr/bin/aria2c';
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -129,6 +131,7 @@ LOG('PKGVAR=' + PKGVAR);
 LOG('TARGET_DIR=' + TARGET_DIR);
 LOG('YT_DLP_BIN=' + YT_DLP_BIN);
 LOG('FFMPEG_BIN=' + FFMPEG_BIN);
+LOG('ARIA2C_BIN=' + ARIA2C_BIN + ' (exists=' + fs.existsSync(ARIA2C_BIN) + ')');
 
 // P2-3: 启动时检测 yt-dlp 版本
 if (fs.existsSync(YT_DLP_BIN)) {
@@ -144,6 +147,132 @@ if (fs.existsSync(YT_DLP_BIN)) {
     LOG('yt-dlp version check error: ' + e.message);
   }
 }
+
+// v0.5.0: yt-dlp GitHub 最新版本 (异步, 不阻塞启动)
+let _ytDlpLatestVersion = '';
+let _ytDlpLatestCheckedAt = 0;
+const checkYtDlpUpdate = async () => {
+  // 缓存 6h 避免反复请求 GitHub
+  if (_ytDlpLatestCheckedAt && Date.now() - _ytDlpLatestCheckedAt < 6 * 3600 * 1000) return _ytDlpLatestVersion;
+  try {
+    const { execFile } = await import('node:child_process');
+    const r = await new Promise((resolve) => {
+      execFile('curl', ['-sL', '--max-time', '15', 'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest'],
+        { timeout: 20000 }, (err, stdout) => {
+          if (err) return resolve(null);
+          try { resolve(JSON.parse(stdout)); } catch (e) { resolve(null); }
+        });
+    });
+    if (r && r.tag_name) {
+      _ytDlpLatestVersion = String(r.tag_name);
+      _ytDlpLatestCheckedAt = Date.now();
+      LOG('[yt-dlp-update] latest=' + _ytDlpLatestVersion);
+    }
+  } catch (e) { LOG('[yt-dlp-update] check failed:', e.message); }
+  return _ytDlpLatestVersion;
+};
+// 后台触发一次 (不 await, 启动不等)
+setTimeout(() => { checkYtDlpUpdate().catch(() => {}); }, 3000);
+
+// v0.5.0: 从 archive 文件读已下载的 videoId 集合 (--download-archive)
+const readArchiveIds = (archivePath) => {
+  const ids = new Set();
+  try {
+    if (!archivePath || !fs.existsSync(archivePath)) return ids;
+    const content = fs.readFileSync(archivePath, 'utf8');
+    for (const line of content.split('\n')) {
+      const m = line.trim().match(/^[a-z]+\s+(\S+)/i);
+      if (m) ids.add(m[1]);
+    }
+  } catch (e) { LOG('[archive] read failed:', e.message); }
+  return ids;
+};
+
+// v0.5.0: URL 提取 videoId (简化版, 用于 archive 查重)
+const extractVideoIdFromUrl = (url) => {
+  if (!url) return '';
+  try {
+    const u = new URL(url);
+    // YouTube:  v=XXX / youtu.be/XXX / /shorts/XXX
+    const host = (u.hostname || '').toLowerCase();
+    if (host.includes('youtube.com') || host.includes('youtu.be')) {
+      return u.searchParams.get('v') || u.pathname.split('/').filter(Boolean).pop() || '';
+    }
+    if (host.includes('bilibili.com')) {
+      // BV... 或 av... 形式
+      const m = u.pathname.match(/\/(BV\w+|av\d+)/i);
+      if (m) return m[1];
+    }
+    return '';  // 其他站点暂不解析, yt-dlp 内部会做
+  } catch (e) { return ''; }
+};
+
+// v0.5.0: 添加任务时检查 archive 是否已下载过 (避免重复)
+const checkArchiveDuplicate = (url, archivePath) => {
+  const id = extractVideoIdFromUrl(url);
+  if (!id) return null;
+  const ids = readArchiveIds(archivePath);
+  return ids.has(id) ? id : null;
+};
+
+// v0.5.0: 解析 yt-dlp.conf 格式 (KEY="value" 或 KEY=value 每行一条, # 开头注释)
+// 仅解析已知白名单 keys, 未知 key 忽略
+const parseYtDlpConf = (content) => {
+  const result = {};
+  if (!content || typeof content !== 'string') return result;
+  const KEY_MAP = {
+    'format': 'format',
+    'output': 'outputTemplate',
+    'limit-rate': 'limitRate',
+    'proxy': 'proxyUrl',
+    'no-playlist': 'noPlaylist',
+    'write-subs': 'writeSubs',
+    'write-auto-subs': 'writeAutoSubs',
+    'write-thumbnail': 'writeThumbnail',
+    'embed-metadata': 'embedMetadata',
+    'embed-subs': 'embedSubs',
+    'embed-thumbnail': 'embedThumbnail',
+    'extract-audio': 'extractAudio',
+    'audio-format': 'audioFormat',
+    'audio-quality': 'audioQuality',
+    'merge-output-format': 'mergeOutputFormat',
+    'convert-subs': 'convertSubs',
+    'download-archive': 'downloadArchive',
+    'match-filters': 'matchFilters',
+    'dateafter': 'dateAfter',
+    'datebefore': 'dateBefore',
+    'min-filesize': 'minFilesize',
+    'max-filesize': 'maxFilesize',
+    'max-downloads': 'maxDownloads',
+    'concurrent-fragments': 'concurrentFragments',
+    'retries': 'retries',
+    'no-mtime': 'mtime',
+    'sub-langs': 'subLangs',
+    'audio-multistreams': 'audioMultistreams',
+    'recode-video': 'recodeVideo',
+    'recode-video-format': 'recodeFormat',
+    'download-sections': 'downloadSections',
+    'force-keyframes-at-cuts': 'forceKeyframesAtCuts',
+  };
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.replace(/^\s*#.*$/, '').trim();  // 去注释
+    if (!line) continue;
+    // 支持 -o / --option / bare
+    const m = line.match(/^--?([\w-]+)\s+(.+)$/);
+    if (!m) continue;
+    const key = m[1].toLowerCase();
+    const val = m[2].trim().replace(/^["']|["']$/g, '');  // 去引号
+    const mapped = KEY_MAP[key];
+    if (!mapped) continue;
+    // bool 解析
+    if (key === 'no-playlist' || key === 'no-mtime') result[mapped] = !val || val === 'true';
+    else if (['write-subs','write-auto-subs','write-thumbnail','embed-metadata','embed-subs','embed-thumbnail','extract-audio','audio-multistreams','force-keyframes-at-cuts'].includes(key)) {
+      result[mapped] = !val || val === 'true' || val === '1';
+    }
+    else result[mapped] = val;
+  }
+  return result;
+};
 
 // ── helpers ────────────────────────────────────────────────────────────
 const sendJSON = (res, status, data) => {
@@ -348,6 +477,25 @@ const DEFAULT_CONFIG = {
   // 磁盘配额 (0 = 关闭)
   quotaBytes: 0,                   // 配额字节数, 0=不限制; 例 50GB = 50 * 1024^3
   quotaAutoClean: false,           // 配额超出时自动删最旧已完成任务
+  // v0.5.0: 视频裁剪 (--download-sections, 空=不裁剪)
+  // 格式: "00:00:30-00:05:00" 或 "*00:00:30-00:05:00" (全格式裁剪)
+  downloadSections: '',
+  forceKeyframesAtCuts: false,    // --force-keyframes-at-cuts (裁剪精度提升, 速度略慢)
+  // v0.5.0: 主题跟随系统 (prefers-color-scheme)
+  themeFollowSystem: false,
+  // v0.5.0: ETA 显示精度 (true=01h23m45s, false=1:23:45)
+  etaVerbose: false,
+  // v0.5.0: aria2c 外部下载器 (大文件提速, 默认自动检测)
+  useAria2c: 'auto',                // 'auto'/'always'/'never'
+  aria2cConnections: 16,           // --external-downloader-args aria2c:-x16 (单文件 16 连接)
+  // v0.5.0: 视频转码 (--recode-video mp4 等, 空=不转码)
+  recodeVideo: '',                  // 例: 'mp4' / 'mkv' / 'mp4,mkv'
+  recodeFormat: '',                 // --recode-video-format 限定容器
+  // v0.5.0: yt-dlp 启动时自动检查更新 (提示用户, 不自动升级)
+  checkYtDlpUpdate: false,
+  // v0.5.0: 速度限制模板 (按时段自动切换, JSON: [{"start":"22:00","end":"07:00","limit":"10M"},{"start":"07:00","end":"22:00","limit":""}])
+  // 空数组 = 不启用; 当前时间在 [start,end) 内使用对应 limit
+  speedSchedule: [],
   // 频道订阅
   subscriptions: [],               // [{url, name, lastId, interval, cookieName, format, enabled}]
 };
@@ -517,6 +665,7 @@ const createTask = (url, options = {}) => {
     ext: '',
     filename: '',
     error: '',
+    tags: Array.isArray(options.tags) ? options.tags.slice(0, 10) : [],   // v0.5.0 标签 (上限 10 个)
     options: { ...options },
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -685,8 +834,27 @@ const buildYtDlpArgs = (task) => {
     args.push('--playlist-items', String(opts.playlistItems));
   }
   // ── 新增 12 参数 (2025-06-09) ───────────────────────────────────
-  // 限速
-  if (config.limitRate) args.push('--limit-rate', String(config.limitRate));
+  // v0.5.0: 限速 (优先 schedule 时间窗口, 否则用 limitRate)
+  const _activeLimit = (() => {
+    if (Array.isArray(config.speedSchedule) && config.speedSchedule.length > 0) {
+      const now = new Date();
+      const cur = now.getHours() * 60 + now.getMinutes();
+      const toMin = (hhmm) => {
+        const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/);
+        if (!m) return -1;
+        return parseInt(m[1]) * 60 + parseInt(m[2]);
+      };
+      for (const w of config.speedSchedule) {
+        const s = toMin(w.start), e = toMin(w.end);
+        if (s < 0 || e < 0) continue;
+        // 处理跨天 (e.g. 22:00-07:00)
+        const inWindow = s <= e ? (cur >= s && cur < e) : (cur >= s || cur < e);
+        if (inWindow) return w.limit || '';
+      }
+    }
+    return config.limitRate || '';
+  })();
+  if (_activeLimit) args.push('--limit-rate', String(_activeLimit));
   // 字幕语言
   if (config.subLangs && (config.writeSubs || config.writeAutoSubs)) {
     args.push('--sub-langs', String(config.subLangs));
@@ -727,6 +895,19 @@ const buildYtDlpArgs = (task) => {
   if (config.maxDownloads && config.maxDownloads > 0) args.push('--max-downloads', String(config.maxDownloads));
   // 字幕格式转换
   if (config.convertSubs) args.push('--convert-subs', String(config.convertSubs));
+  // v0.5.0: 视频裁剪
+  if (config.downloadSections) args.push('--download-sections', String(config.downloadSections));
+  if (config.forceKeyframesAtCuts) args.push('--force-keyframes-at-cuts');
+  // v0.5.0: aria2c 外部下载器 (auto = 存在就用; always = 强制; never = 不用)
+  const useA = config.useAria2c || 'auto';
+  if (useA !== 'never' && (useA === 'always' || fs.existsSync(ARIA2C_BIN))) {
+    const conns = parseInt(config.aria2cConnections || 16);
+    args.push('--external-downloader', ARIA2C_BIN);
+    args.push('--external-downloader-args', `aria2c:-x${conns} -j${conns} -s${conns}`);
+  }
+  // v0.5.0: 视频转码
+  if (config.recodeVideo) args.push('--recode-video', String(config.recodeVideo));
+  if (config.recodeFormat) args.push('--recode-video-format', String(config.recodeFormat));
   // URL
   args.push(task.url);
   return args;
@@ -1403,6 +1584,17 @@ const handle = async (req, res) => {
       const url = body.url?.trim();
       if (!url) return sendJSON(res, 400, { error: 'url is required' });
       if (!isValidUrl(url)) return sendJSON(res, 400, { error: `Invalid URL (only http/https allowed): ${url}` });
+      // v0.5.0: archive 查重检测 (--download-archive 启用时)
+      if (config.downloadArchive) {
+        const ap = path.isAbsolute(config.downloadArchive) ? config.downloadArchive : path.join(DATA_DIR, config.downloadArchive);
+        if (path.resolve(ap).startsWith(path.resolve(DATA_DIR + '/'))) {
+          const dupId = checkArchiveDuplicate(url, ap);
+          if (dupId) {
+            // 不直接拒绝, 提示前端: 已下载过, 是否重下
+            return sendJSON(res, 200, { duplicate: true, videoId: dupId, archive: ap });
+          }
+        }
+      }
       // feat3: 使用解析→建文件夹→info.txt→下载 流程
       // 如果前端已传 parsedInfo, 注入到 options 中让 parseAndCreateTask 跳过第二次 infoUrl
       const opts = body.options || {};
@@ -1529,6 +1721,32 @@ const handle = async (req, res) => {
       const u = new URL(req.url, 'http://localhost');
       const v = u.searchParams.get('value') || '';
       sendJSON(res, 200, { value: v, bytes: parseSizeString(v) });
+    }
+    // v0.5.0: yt-dlp 更新检查 (强制刷新)
+    else if (pathname === '/api/yt-dlp/check-update' && req.method === 'GET') {
+      try {
+        _ytDlpLatestCheckedAt = 0;  // 跳过缓存
+        const v = await checkYtDlpUpdate();
+        sendJSON(res, 200, { latest: v, current: '' });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
+    // v0.5.0: 导入 yt-dlp.conf 解析结果 (前端 POST 文本内容, 后端解析覆盖 config)
+    else if (pathname === '/api/config/import-yt-dlp-conf' && req.method === 'POST') {
+      try {
+        const body = await parseBody(req);
+        const content = body.content || '';
+        const parsed = parseYtDlpConf(content);
+        // 合并到 config (parsed 优先, 但现有值不在空时保留)
+        for (const [k, v] of Object.entries(parsed)) {
+          config[k] = v;
+        }
+        saveConfig();
+        sendJSON(res, 200, { ok: true, imported: parsed, count: Object.keys(parsed).length });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
     }
     // ── play: 播放已完成任务的视频文件 ──────────────────────────
     else if (pathname.startsWith('/api/play/') && req.method === 'GET') {
@@ -1735,7 +1953,7 @@ const handle = async (req, res) => {
     }
     // ── system ──
     else if (pathname === '/api/health') {
-      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: fs.existsSync(YT_DLP_BIN), ffmpegExists: fs.existsSync(FFMPEG_BIN), version: VERSION });
+      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: fs.existsSync(YT_DLP_BIN), ffmpegExists: fs.existsSync(FFMPEG_BIN), aria2cExists: fs.existsSync(ARIA2C_BIN), ytDlpLatest: _ytDlpLatestVersion, version: VERSION });
     } else if (pathname === '/api/events') {
       handleSSE(req, res);
     }

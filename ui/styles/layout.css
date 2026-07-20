@@ -2132,3 +2132,15 @@ html[data-theme='light'] .sched-item.sched-completed {
   border-radius: var(--radius-sm, 6px);
   background: var(--bg-elev-1);
 }
+
+/* ===== v0.5.0: 速度模板 ===== */
+.speed-schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.speed-schedule-row .input {
+  height: 32px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+}
