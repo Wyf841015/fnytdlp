@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { applyLine as _applyProgressLine, newTask as _newProgressTask } from './util/progress-aggregator.js';
 
 // ── version (保持与 manifest 一致 ────────────────────────────────────────
-const VERSION = '0.6.0';
+const VERSION = '0.7.0';
 // ── paths ──────────────────────────────────────────────────────────────
 const PKGVAR    = process.env.TRM_PKGVAR || process.env.TRIM_PKGVAR || null;
 const APPDEST   = process.env.TRIM_APPDEST || null;
@@ -688,6 +688,8 @@ const createTask = (url, options = {}) => {
     title: '',
     thumbnail: '',
     duration: 0,
+    uploader: '',
+    extractor: '',
     status: 'pending',    // pending → downloading → processing → completed / error / paused / stopped
     progress: 0,
     downloadedBytes: 0,
@@ -763,6 +765,10 @@ const getTask = (id) => tasks.get(id);
 const deleteTask = (id, opts = {}) => {
   const task = tasks.get(id);
   if (!task) return false;
+  // 下载历史: 删除已完成/出错的任务时保存到历史记录
+  if (task.status === 'completed' || task.status === 'error') {
+    addToHistory(task);
+  }
   if (_procs.has(id)) {
     try { _procs.get(id).kill('SIGTERM'); } catch (e) {}
     _procs.delete(id);
@@ -822,8 +828,8 @@ const buildYtDlpArgs = (task) => {
   args.push('--no-colors');
   args.push('--no-warnings');
   args.push('--progress-template', 'PROGRESS|%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|DONE');
-  // 输出模板
-  const outTpl = config.outputTemplate || DEFAULT_CONFIG.outputTemplate;
+  // 输出模板 (任务级优先)
+  const outTpl = opts.outputTemplate || config.outputTemplate || DEFAULT_CONFIG.outputTemplate;
   // feat3: 如果有下载文件夹则使用文件夹路径, 否则用默认 downloadPath
   const outputBase = opts._downloadFolder || config.downloadPath;
   args.push('-o', path.join(outputBase, outTpl));
@@ -839,10 +845,15 @@ const buildYtDlpArgs = (task) => {
   args.push('--retries', String(opts.retries ?? config.retries ?? 3));
   // 嵌入元数据
   if (config.embedMetadata) args.push('--embed-metadata');
-  // 字幕
-  if (config.writeSubs) {
+  // 字幕 (任务级/配置级)
+  const subsEnabled = opts.writeSubs !== undefined ? opts.writeSubs : config.writeSubs;
+  const autoSubsEnabled = opts.writeAutoSubs !== undefined ? opts.writeAutoSubs : config.writeAutoSubs;
+  if (subsEnabled) {
     args.push('--write-subs');
-    if (config.writeAutoSubs) args.push('--write-auto-subs');
+    if (autoSubsEnabled) args.push('--write-auto-subs');
+    // 字幕语言 (任务级优先)
+    const subLangs = opts.subLangs || config.subLangs || '';
+    if (subLangs) args.push('--sub-langs', String(subLangs));
   }
   // 缩略图
   if (config.writeThumbnail) args.push('--write-thumbnail');
@@ -928,9 +939,10 @@ const buildYtDlpArgs = (task) => {
   if (config.maxDownloads && config.maxDownloads > 0) args.push('--max-downloads', String(config.maxDownloads));
   // 字幕格式转换
   if (config.convertSubs) args.push('--convert-subs', String(config.convertSubs));
-  // v0.5.0: 视频裁剪
-  if (config.downloadSections) args.push('--download-sections', String(config.downloadSections));
-  if (config.forceKeyframesAtCuts) args.push('--force-keyframes-at-cuts');
+  // v0.5.0: 视频裁剪 (任务级优先)
+  const sections = opts.downloadSections || config.downloadSections || '';
+  if (sections) args.push('--download-sections', String(sections));
+  if (opts.forceKeyframesAtCuts !== undefined ? opts.forceKeyframesAtCuts : config.forceKeyframesAtCuts) args.push('--force-keyframes-at-cuts');
   // v0.5.0: aria2c 外部下载器 (auto = 存在就用; always = 强制; never = 不用)
   const useA = config.useAria2c || 'auto';
   if (useA !== 'never' && (useA === 'always' || fs.existsSync(ARIA2C_BIN))) {
@@ -1049,6 +1061,8 @@ const startTask = (id) => {
       task.speed = 0;
       task.eta = 0;
       task.completedAt = Date.now();
+      // 添加到下载历史
+      addToHistory(task);
       // 兜底: 用 fs.statSync 读真实文件大小 (progress 模板里 total_bytes_estimate 可能为 0)
       // 优先选最终合并产物 (mp4/mkv/webm/m4a 等), 排除中间分片 (.m4s/.tmp/.part)
       try {
@@ -1241,6 +1255,8 @@ const parseAndCreateTask = async (url, options = {}) => {
   task.title = rawInfo?.title || '';
   task.duration = rawInfo?.duration || 0;
   task.thumbnail = rawInfo?.thumbnail || '';
+  task.uploader = rawInfo?.uploader || '';
+  task.extractor = rawInfo?.extractor || '';
   task.downloadFolder = folderName;
   // 缓存 formats 列表给 util 反查 formatId → 人类可读描述 ("1080p HEVC + 128k mp4a")
   if (rawInfo?.formats && Array.isArray(rawInfo.formats)) {
@@ -1447,6 +1463,101 @@ const infoUrl = (url, cookieName) => {
     proc.on('error', reject);
   });
 };
+
+// ── /api/search (YouTube 搜索, 借鉴 ytDownloader) ──────────────────────
+const searchYoutube = (query, cookieName) => {
+  return new Promise((resolve, reject) => {
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+      return reject(new Error('query is required'));
+    }
+    const args = ['--flat-playlist', '--dump-json', '--no-warnings', '--playlist-end', '30'];
+    if (cookieName && config.cookies && config.cookies.some(c => c.name === cookieName)) {
+      const fp = getCookieFile(cookieName);
+      if (fs.existsSync(fp)) args.push('--cookies', fp);
+    }
+    args.push(`ytsearch30:${query.trim()}`);
+    const proc = spawn(YT_DLP_BIN, args, {
+      env: { ...process.env, PATH: process.env.PATH + ':/usr/bin:/usr/local/bin' },
+      timeout: 30000,
+    });
+    let out = '', err = '';
+    proc.stdout.on('data', c => out += c);
+    proc.stderr.on('data', c => err += c);
+    const timer = setTimeout(() => {
+      try { proc.kill('SIGTERM'); } catch (e) {}
+      reject(new Error('yt-dlp search timeout (30s)'));
+    }, 30000);
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(err.trim() || `exit ${code}`));
+      const results = [];
+      for (const line of out.trim().split('\n').filter(Boolean)) {
+        try {
+          const e = JSON.parse(line);
+          if (e._type === 'playlist') continue;
+          results.push({
+            id: e.id,
+            title: e.title || '',
+            url: e.url || e.webpage_url || '',
+            thumbnail: e.thumbnail || '',
+            duration: e.duration || 0,
+            uploader: e.uploader || e.channel || '',
+            uploadDate: e.upload_date || '',
+            viewCount: e.view_count || 0,
+            extractor: e.extractor || '',
+          });
+        } catch (e) { /* skip parse error */ }
+      }
+      resolve(results);
+    });
+    proc.on('error', reject);
+  });
+};
+
+// ── 下载历史持久化 (借鉴 ytDownloader DownloadHistory) ────────────────
+const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
+const HISTORY_MAX = 500;
+let _downloadHistory = [];
+
+const loadHistory = () => {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      _downloadHistory = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+      if (!Array.isArray(_downloadHistory)) _downloadHistory = [];
+    }
+  } catch (e) { LOG('[history] load failed:', e.message); _downloadHistory = []; }
+};
+const saveHistory = () => {
+  try {
+    _atomicWrite(HISTORY_FILE, JSON.stringify(_downloadHistory, null, 2));
+  } catch (e) { LOG('[history] save failed:', e.message); }
+};
+const addToHistory = (task) => {
+  if (!task) return;
+  const entry = {
+    id: task.id,
+    url: task.url,
+    title: task.title || '',
+    filename: task.filename || '',
+    fileSize: task.totalBytes || 0,
+    format: task.format || task.ext || '',
+    thumbnail: task.thumbnail || '',
+    duration: task.duration || 0,
+    status: task.status || 'completed',
+    error: task.error || '',
+    downloadDate: new Date().toISOString(),
+    timestamp: Date.now(),
+    cookieName: task.options?.cookieName || '',
+    extractor: task.extractor || '',
+    uploader: task.uploader || '',
+  };
+  _downloadHistory.unshift(entry);
+  if (_downloadHistory.length > HISTORY_MAX) {
+    _downloadHistory = _downloadHistory.slice(0, HISTORY_MAX);
+  }
+  saveHistory();
+};
+loadHistory();
 
 // ══════════════════════════════════════════════════════════════════
 // 模块 4b: 磁盘配额扫描 + 自动清理 (v0.4.0 新增)
@@ -2071,6 +2182,43 @@ const startAISummary = async (url) => {
         sendJSON(res, 200, { entries, isPlaylist: entries.length > 1 || (entries.length === 1 && entries[0].index > 0) });
       } catch (e) {
         sendJSON(res, 500, { error: e.message });
+      }
+    }
+    // ── /api/search (YouTube 搜索) ──
+    else if (pathname === '/api/search' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const query = (body.query || '').trim();
+      if (!query) return sendJSON(res, 400, { error: 'query is required' });
+      try {
+        const results = await searchYoutube(query, body.cookieName);
+        sendJSON(res, 200, { results, query });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
+    // ── 下载历史 API ──
+    else if (pathname === '/api/history' && req.method === 'GET') {
+      const u = new URL(req.url, 'http://localhost');
+      const limit = parseInt(u.searchParams.get('limit')) || 50;
+      const search = (u.searchParams.get('search') || '').trim().toLowerCase();
+      let items = _downloadHistory;
+      if (search) {
+        items = items.filter(h => (h.title || '').toLowerCase().includes(search) || (h.url || '').toLowerCase().includes(search));
+      }
+      sendJSON(res, 200, { history: items.slice(0, limit), total: _downloadHistory.length });
+    }
+    else if (pathname === '/api/history' && req.method === 'DELETE') {
+      const body = await parseBodySafe(req);
+      if (body.all) {
+        _downloadHistory = [];
+        saveHistory();
+        sendJSON(res, 200, { ok: true, cleared: true });
+      } else if (body.id) {
+        _downloadHistory = _downloadHistory.filter(h => h.id !== body.id);
+        saveHistory();
+        sendJSON(res, 200, { ok: true });
+      } else {
+        sendJSON(res, 400, { error: 'id or all=true required' });
       }
     }
     else if (pathname === '/api/tasks/batch' && req.method === 'POST') {

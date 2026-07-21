@@ -76,7 +76,8 @@
     <div class="toolbar">
       <div class="toolbar-group">
         <button class="toolbar-btn primary" onclick="showAddTaskModal()" aria-label="添加下载任务">➕<span class="btn-text">添加</span></button>
-        <button class="toolbar-btn primary-outline" onclick="showInfoModal()" aria-label="解析视频 URL">🔍<span class="btn-text">解析</span></button>
+        <button class="toolbar-btn primary-outline" onclick="showSearchModal()" aria-label="搜索视频">🔍<span class="btn-text">搜索</span></button>
+        <button class="toolbar-btn primary-outline" onclick="showInfoModal()" aria-label="解析视频 URL">📋<span class="btn-text">解析</span></button>
       </div>
       <div class="toolbar-divider"></div>
       <div class="toolbar-group">
@@ -87,6 +88,7 @@
       <div class="toolbar-group">
         <button class="toolbar-btn ghost" onclick="showSettingsModal()" aria-label="打开设置">⚙<span class="btn-text">设置</span></button>
         <button class="toolbar-btn ghost" onclick="showStatsModal()" aria-label="下载统计">📊<span class="btn-text">统计</span></button>
+        <button class="toolbar-btn ghost" onclick="showHistoryModal()" aria-label="下载历史">📜<span class="btn-text">历史</span></button>
         <button class="toolbar-btn ghost" onclick="showCookieModal()" aria-label="管理 Cookie">🍪<span class="btn-text">Cookie</span></button>
         <button class="toolbar-btn ghost" onclick="showSubscriptionModal()" aria-label="管理订阅">🔔<span class="btn-text">订阅</span></button>
       </div>
@@ -242,6 +244,22 @@
           <input class="input" id="addOutputTemplate" placeholder="%(title)s [%(id)s].%(ext)s" value="">
           <div class="form-hint">空 = 跟设置里一致</div>
         </div>
+        <div class="form-row" style="gap:8px">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">时间范围 (裁剪)</label>
+            <div class="input-group">
+              <input class="input" id="addTimeStart" placeholder="00:00:00" style="flex:1">
+              <span style="color:var(--text-dim)">→</span>
+              <input class="input" id="addTimeEnd" placeholder="00:05:00" style="flex:1">
+            </div>
+            <div class="form-hint">例: 从 00:00:30 到 00:05:00, 空=不裁剪</div>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">字幕语言</label>
+            <input class="input" id="addSubLangs" placeholder="例: zh-Hans,en / all,-live_chat">
+            <div class="form-hint">需勾\"下载字幕\", 空=使用设置默认</div>
+          </div>
+        </div>
         <div class="form-group">
           <label class="form-label">SponsorBlock 标记 (用逗号分隔)</label>
           <input class="input" id="addSponsorBlock" placeholder="sponsor,selfpromo,intro" value="">
@@ -284,6 +302,54 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="hideModal('infoModal')">关闭</button>
       <button class="btn btn-primary" onclick="submitInfo()">解析</button>
+    </div>
+  </div>
+</div>
+
+<!-- 搜索 Modal (YouTube 搜索, 借鉴 ytDownloader) -->
+<div class="modal-overlay" id="searchModal" onclick="if(event.target===this)hideModal('searchModal')">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title">🔍 搜索视频</h2>
+      <button class="btn-icon" onclick="hideModal('searchModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <div class="input-group">
+          <input class="input" id="searchQuery" placeholder="输入关键词搜索 YouTube / B站 等..." onkeydown="if(event.key==='Enter')doSearch()">
+          <button class="btn btn-primary" onclick="doSearch()">🔍 搜索</button>
+        </div>
+        <div class="form-hint">支持 YouTube、B站、抖音等 yt-dlp 支持的站点。键入关键词搜索。</div>
+      </div>
+      <div id="searchResults" class="search-results" style="max-height:55vh;overflow-y:auto">
+        <div class="info-preview" style="padding:24px;text-align:center;color:var(--text-dim)">输入关键词后点击搜索</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="hideModal('searchModal')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 历史记录 Modal (借鉴 ytDownloader DownloadHistory) -->
+<div class="modal-overlay" id="historyModal" onclick="if(event.target===this)hideModal('historyModal')">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title">📜 下载历史</h2>
+      <button class="btn-icon" onclick="hideModal('historyModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="display:flex;gap:8px;margin-bottom:12px">
+        <input class="input" id="historySearch" placeholder="搜索历史记录..." oninput="loadHistory()" style="flex:1">
+        <button class="btn btn-ghost" onclick="clearHistory()" style="flex-shrink:0">🗑 清空全部</button>
+      </div>
+      <div id="historyList" class="history-list" style="max-height:55vh;overflow-y:auto">
+        <div class="info-preview" style="padding:24px;text-align:center;color:var(--text-dim)">加载中...</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span id="historyCount" class="form-hint" style="flex:1"></span>
+      <button class="btn btn-ghost" onclick="hideModal('historyModal')">关闭</button>
     </div>
   </div>
 </div>

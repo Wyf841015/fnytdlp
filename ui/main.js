@@ -6,7 +6,7 @@
 
 'use strict';
 
-console.log('[fnytdlp] main.js loaded, version=0.6.0');
+console.log('[fnytdlp] main.js loaded, version=0.7.0');
 
 // ── API client (统一网关模式) ──────────────────────────────────────
 const GATEWAY_BASE = (typeof window !== 'undefined' && window.GATEWAY_BASE) || (self.location?.pathname?.startsWith('/app/') ? '/app/fnytdlp' : '');
@@ -83,10 +83,15 @@ const API = {
       throw e;
     }
   },
-  async del(path) {
+  async del(path, body) {
     const url = this._url(path);
     try {
-      const r = await this._fetch(url, { method: 'DELETE', credentials: 'same-origin' });
+      const options = { method: 'DELETE', credentials: 'same-origin' };
+      if (body) {
+        options.headers = { 'Content-Type': 'application/json' };
+        options.body = JSON.stringify(body);
+      }
+      const r = await this._fetch(url, options);
       if (!r.ok) {
         let errMsg = 'HTTP ' + r.status;
         try { const j = await r.json(); if (j && j.error) errMsg = j.error; } catch (e) {}
@@ -302,10 +307,144 @@ document.addEventListener('DOMContentLoaded', () => {
   if (cy) cy.textContent = new Date().getFullYear();
 });
 
-// ── 键盘快捷键 ──────────────────────────────────────────
+// ── 搜索 (YouTube 搜索, 借鉴 ytDownloader) ──────────────────────────
+const showSearchModal = () => {
+  $('searchQuery').value = '';
+  $('searchResults').innerHTML = '<div class="info-preview" style="padding:24px;text-align:center;color:var(--text-dim)">输入关键词后点击搜索</div>';
+  showModal('searchModal');
+  setTimeout(() => $('searchQuery').focus(), 100);
+};
+window.showSearchModal = showSearchModal;
+
+const doSearch = async () => {
+  const query = $('searchQuery').value.trim();
+  if (!query) { toast('请输入搜索关键词', 'warn'); return; }
+  const results = $('searchResults');
+  results.innerHTML = '<div class="info-preview" style="padding:24px;text-align:center">⏳ 搜索中...</div>';
+  try {
+    const r = await API.post('/api/search', { query });
+    if (!r.results || r.results.length === 0) {
+      results.innerHTML = '<div class="info-preview" style="padding:24px;text-align:center;color:var(--text-dim)">未找到结果，请尝试其他关键词</div>';
+      return;
+    }
+    let html = `<div class="form-hint" style="margin-bottom:8px">找到 ${r.results.length} 个结果</div>`;
+    for (const item of r.results) {
+      const dur = formatDuration(item.duration);
+      html += `<div class="search-result-card" onclick="searchSelect('${esc(item.url)}','${esc(item.title)}')" style="display:flex;gap:10px;padding:8px;cursor:pointer;border-radius:var(--radius-sm);margin-bottom:6px;background:var(--bg-card);transition:background 0.15s;align-items:flex-start" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='var(--bg-card)'" title="点击下载此视频">
+        ${item.thumbnail ? `<img src="${wrapThumb(item.thumbnail)}" style="width:120px;height:68px;object-fit:cover;border-radius:4px;flex-shrink:0" onerror="this.style.display='none'" loading="lazy">` : ''}
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:500;margin-bottom:4px;line-height:1.3">${esc(item.title)}</div>
+          <div style="display:flex;gap:12px;font-size:12px;color:var(--text-dim)">
+            <span>📺 ${esc(item.uploader || '?')}</span>
+            ${dur ? `<span>⏱ ${dur}</span>` : ''}
+            ${item.viewCount ? `<span>👁 ${item.viewCount.toLocaleString()}</span>` : ''}
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${esc(item.extractor || '')}</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();searchSelect('${esc(item.url)}','${esc(item.title)}')" style="flex-shrink:0;align-self:center">📥 下载</button>
+      </div>`;
+    }
+    results.innerHTML = html;
+    toast(`找到 ${r.results.length} 个结果`, 'success');
+  } catch (e) {
+    results.innerHTML = `<div class="info-preview" style="padding:24px;text-align:center;color:var(--color-danger)">❌ 搜索失败: ${esc(e.message)}</div>`;
+  }
+};
+window.doSearch = doSearch;
+
+const searchSelect = (url, title) => {
+  // 关闭搜索弹窗, 打开添加任务弹窗并填入 URL
+  hideModal('searchModal');
+  $('addUrls').value = url;
+  $('addPreview').textContent = `已选: ${esc(title)}`;
+  showModal('addTaskModal');
+  // 自动解析
+  setTimeout(parseUrls, 200);
+};
+window.searchSelect = searchSelect;
+
+// ── 下载历史 ──────────────────────────────────────────────────────
+const showHistoryModal = async () => {
+  showModal('historyModal');
+  $('historySearch').value = '';
+  await loadHistory();
+};
+window.showHistoryModal = showHistoryModal;
+
+const loadHistory = async () => {
+  const list = $('historyList');
+  const count = $('historyCount');
+  const search = $('historySearch')?.value?.trim() || '';
+  if (!list) return;
+  list.innerHTML = '<div class="info-preview" style="padding:24px;text-align:center">⏳ 加载历史...</div>';
+  try {
+    const r = await API.get('/api/history?limit=200' + (search ? '&search=' + encodeURIComponent(search) : ''));
+    const items = r.history || [];
+    if (count) count.textContent = `共 ${r.total || items.length} 条记录`;
+    if (items.length === 0) {
+      list.innerHTML = '<div class="info-preview" style="padding:24px;text-align:center;color:var(--text-dim)">暂无下载历史</div>';
+      return;
+    }
+    let html = '';
+    for (const h of items) {
+      const date = h.downloadDate ? new Date(h.downloadDate).toLocaleString('zh-CN') : '';
+      const size = h.fileSize ? formatBytes(h.fileSize) : '?';
+      html += `<div class="history-item" style="display:flex;gap:8px;padding:8px;border-radius:var(--radius-sm);margin-bottom:4px;background:var(--bg-card);align-items:center">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.title || h.url)}</div>
+          <div style="font-size:11px;color:var(--text-dim);display:flex;gap:8px;flex-wrap:wrap">
+            <span>${date}</span>
+            <span>${size}</span>
+            <span>${esc(h.format || h.extractor || '')}</span>
+            ${h.status === 'error' ? `<span style="color:var(--color-danger)">❌ ${esc(h.error || '')}</span>` : ''}
+            ${h.cookieName ? `<span>🔒 ${esc(h.cookieName)}</span>` : ''}
+          </div>
+        </div>
+        <button class="btn-icon-sm" title="重新下载" onclick="reDownload('${esc(h.url)}')">🔄</button>
+        <button class="btn-icon-sm" title="删除历史" onclick="deleteHistoryItem('${esc(h.id)}')">🗑</button>
+      </div>`;
+    }
+    list.innerHTML = html;
+  } catch (e) {
+    list.innerHTML = `<div class="info-preview" style="padding:24px;text-align:center;color:var(--color-danger)">❌ 加载失败: ${esc(e.message)}</div>`;
+  }
+};
+window.loadHistory = loadHistory;
+
+const reDownload = (url) => {
+  hideModal('historyModal');
+  $('addUrls').value = url;
+  showModal('addTaskModal');
+  setTimeout(parseUrls, 200);
+};
+window.reDownload = reDownload;
+
+const deleteHistoryItem = async (id) => {
+  if (!await showConfirm('删除历史', '确认删除此条历史记录?')) return;
+  try {
+    await API.del('/api/history', { id });
+    toast('已删除', 'success');
+    await loadHistory();
+  } catch (e) {
+    toast('删除失败: ' + e.message, 'error');
+  }
+};
+window.deleteHistoryItem = deleteHistoryItem;
+
+const clearHistory = async () => {
+  if (!await showConfirm('清空历史', '确认清空全部下载历史? (不可恢复)')) return;
+  try {
+    await API.del('/api/history', { all: true });
+    toast('历史已清空', 'success');
+    await loadHistory();
+  } catch (e) {
+    toast('清空失败: ' + e.message, 'error');
+  }
+};
+window.clearHistory = clearHistory;
 const SHORTCUTS = {
   'n': { label: '新建任务', action: () => showAddTaskModal() },
-  's': { label: '搜索', action: () => { const i = $('searchInput'); if(i) { i.focus(); i.select(); } } },
+  's': { label: '搜索', action: () => { showSearchModal(); } },
   'r': { label: '刷新', action: () => loadTasks() },
   '?': { label: '快捷键帮助', action: () => showShortcutsHelp() },
   'Escape': { label: '关闭弹窗', action: () => {
@@ -655,6 +794,9 @@ const showAddTaskModal = () => {
   $('addWriteSubs').checked = false;
   $('addWriteThumbnail').checked = true;
   $('addNoPlaylist').checked = false;
+  $('addTimeStart').value = '';
+  $('addTimeEnd').value = '';
+  $('addSubLangs').value = '';
   $('addCookieName').value = '';
   $('addPreview').textContent = '点 "解析" 按钮查看元数据';
   loadCookieSelect();
@@ -730,6 +872,15 @@ const submitAddTask = async () => {
   options.writeSubs = $('addWriteSubs').checked;
   options.writeThumbnail = $('addWriteThumbnail').checked;
   options.noPlaylist = $('addNoPlaylist').checked;
+  // 时间范围 (裁剪)
+  const ts = $('addTimeStart')?.value.trim();
+  const te = $('addTimeEnd')?.value.trim();
+  if (ts || te) {
+    options.downloadSections = (ts || '00:00:00') + '-' + (te || '');
+  }
+  // 字幕语言
+  const sl = $('addSubLangs')?.value.trim();
+  if (sl) options.subLangs = sl;
   const cookieName = $('addCookieName').value.trim();
   if (cookieName) {
     options.cookieName = cookieName;
