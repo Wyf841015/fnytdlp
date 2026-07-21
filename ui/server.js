@@ -1534,6 +1534,9 @@ const saveHistory = () => {
 };
 const addToHistory = (task) => {
   if (!task) return;
+  // 去重: 相同 id 的已有记录先移除 (避免完成时和删除时两次写入)
+  const existingIdx = _downloadHistory.findIndex(h => h.id === task.id);
+  if (existingIdx >= 0) _downloadHistory.splice(existingIdx, 1);
   const entry = {
     id: task.id,
     url: task.url,
