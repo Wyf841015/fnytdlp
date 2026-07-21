@@ -1,6 +1,6 @@
 {
   "name": "fnytdlp",
-  "version": "0.7.0",
+  "version": "0.6.1",
   "description": "yt-dlp GUI for fnOS, supports 1000+ sites with auto x86/arm binary selection",
   "type": "module",
   "main": "ui/server.js",

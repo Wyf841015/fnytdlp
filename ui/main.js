@@ -6,7 +6,7 @@
 
 'use strict';
 
-console.log('[fnytdlp] main.js loaded, version=0.7.0');
+console.log('[fnytdlp] main.js loaded, version=0.6.1');
 
 // ── API client (统一网关模式) ──────────────────────────────────────
 const GATEWAY_BASE = (typeof window !== 'undefined' && window.GATEWAY_BASE) || (self.location?.pathname?.startsWith('/app/') ? '/app/fnytdlp' : '');
