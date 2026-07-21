@@ -270,6 +270,25 @@ if (_sysThemeMQ && _sysThemeMQ.addEventListener) {
 }
 window.applySystemTheme = applySystemTheme;
 
+// ── 质量预设 (借鉴 VidBee format-preferences) ───────────────────
+const QUALITY_PRESETS = [
+  { id: 'best',   label: '最佳', icon: '👑', desc: '不限分辨率' },
+  { id: 'good',   label: '高清', icon: '🎯', desc: '1080p' },
+  { id: 'normal', label: '标清', icon: '📺', desc: '720p' },
+  { id: 'bad',    label: '流畅', icon: '📱', desc: '480p' },
+  { id: 'worst',  label: '最低', icon: '⚡', desc: '360p' },
+];
+let _selectedQuality = 'best';
+
+// 容器格式选项 (借鉴 VidBee OneClickContainer)
+const CONTAINER_OPTIONS = [
+  { id: 'auto',     label: '自动', icon: '🔄' },
+  { id: 'mp4',      label: 'MP4',  icon: '🎬' },
+  { id: 'mkv',      label: 'MKV',  icon: '📦' },
+  { id: 'webm',     label: 'WebM', icon: '🌐' },
+  { id: 'original', label: '原始', icon: '📄' },
+];
+
 // ── 添加任务弹窗辅助函数 ──────────────────────────────────────
 const URL_RE = /^https?:\/\/.+/i;
 const onUrlInput = (el) => {
@@ -300,6 +319,21 @@ const selectFormatPill = (btn) => {
   if (custom) custom.value = btn.dataset.value;
 };
 window.selectFormatPill = selectFormatPill;
+
+const selectQuality = (presetId) => {
+  _selectedQuality = presetId;
+  document.querySelectorAll('.quality-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.quality === presetId);
+  });
+};
+window.selectQuality = selectQuality;
+
+const selectContainer = (containerId) => {
+  document.querySelectorAll('.container-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.container === containerId);
+  });
+};
+window.selectContainer = selectContainer;
 
 // 版权年份
 document.addEventListener('DOMContentLoaded', () => {
@@ -431,6 +465,16 @@ const deleteHistoryItem = async (id) => {
 };
 window.deleteHistoryItem = deleteHistoryItem;
 
+const clearThumbnailCache = async () => {
+  try {
+    await API.post('/api/thumbnail-cache/clear');
+    toast('缩略图缓存已清理', 'success');
+  } catch (e) {
+    toast('清理失败: ' + e.message, 'error');
+  }
+};
+window.clearThumbnailCache = clearThumbnailCache;
+
 const clearHistory = async () => {
   if (!await showConfirm('清空历史', '确认清空全部下载历史? (不可恢复)')) return;
   try {
@@ -538,6 +582,10 @@ const renderTasks = () => {
   } else {
     byFilter = currentFilter === 'all' ? tasks : tasks.filter(t => t.status === currentFilter);
   }
+  // 兼容新状态: retry-scheduled 归入 pending 显示
+  if (currentFilter === 'all') {
+    byFilter = tasks.filter(t => !['retry-scheduled'].includes(t.status));
+  }
   const filtered = !query ? byFilter : byFilter.filter(t => {
     const url = (t.url || '').toLowerCase();
     const fname = (t.filename || '').toLowerCase();
@@ -567,6 +615,8 @@ const renderTasks = () => {
   $('countActive').textContent = tasks.filter(t => t.status === 'downloading' || t.status === 'pending').length;
   $('countDone').textContent = tasks.filter(t => t.status === 'completed').length;
   $('countError').textContent = tasks.filter(t => t.status === 'error').length;
+  if ($('countPaused')) $('countPaused').textContent = tasks.filter(t => t.status === 'paused').length;
+  if ($('countCancelled')) $('countCancelled').textContent = tasks.filter(t => t.status === 'cancelled').length;
   // v0.5.0: 视频/音频 tab count
   const _vidExt = /^(mp4|mkv|webm|m4v|flv|avi|mov)$/i;
   const _audExt = /^(mp3|m4a|opus|flac|wav|aac|ogg)$/i;
@@ -678,7 +728,7 @@ const renderTask = (t) => {
           ${elapsed ? `<span class="task-sep">·</span> ${elapsed}` : ''}
         </div>
       ` : ''}
-      ${t.error ? `<div class="task-error">${esc(t.error)}</div>` : ''}
+      ${t.error ? `<div class="task-error" title="${esc(t.error)}">${esc(t.error.split('\n')[0])}</div>` : ''}
     </div>
   `;
 };
@@ -788,6 +838,11 @@ const showAddTaskModal = () => {
   $('addFormatCustom').value = '';
   // 清除格式 pill 选中状态
   document.querySelectorAll('.format-pill').forEach(p => p.classList.remove('active'));
+  // 重置质量预设为 best
+  _selectedQuality = 'best';
+  document.querySelectorAll('.quality-btn').forEach(b => b.classList.toggle('active', b.dataset.quality === 'best'));
+  // 重置容器为 auto
+  document.querySelectorAll('.container-btn').forEach(b => b.classList.toggle('active', b.dataset.container === 'auto'));
   $('addOutputTemplate').value = '';
   $('addSponsorBlock').value = '';
   $('addEmbedMetadata').checked = true;
@@ -863,7 +918,17 @@ const submitAddTask = async () => {
   const tagInput = $('addTags')?.value.trim();
   if (tagInput) options.tags = tagInput.split(/[,，]/).map(s => s.trim()).filter(Boolean).slice(0, 10);
   const fmtCustom = $('addFormatCustom').value.trim();
-  if (fmtCustom) options.format = fmtCustom;
+  if (fmtCustom) {
+    options.format = fmtCustom;
+  } else {
+    // 使用质量预设 (除非用户手动选了自定义格式)
+    options.qualityPreset = _selectedQuality;
+  }
+  // 容器格式
+  const activeContainer = document.querySelector('.container-btn.active');
+  if (activeContainer) {
+    options.containerFormat = activeContainer.dataset.container;
+  }
   const ot = $('addOutputTemplate').value.trim();
   if (ot) options.outputTemplate = ot;
   const sb = $('addSponsorBlock').value.trim();
@@ -1386,6 +1451,18 @@ const showSettingsModal = async () => {
   $('setConcurrent').value = cfg.concurrentDownloads || 3;
   $('setConcurrentFragments').value = cfg.concurrentFragments || 4;
   $('setFormat').value = cfg.format || '';
+  // 质量预设 (如果 config 有保存)
+  if (cfg.qualityPreset) {
+    _selectedQuality = cfg.qualityPreset;
+    document.querySelectorAll('.quality-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.quality === cfg.qualityPreset);
+    });
+  }
+  if (cfg.containerFormat) {
+    document.querySelectorAll('.container-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.container === cfg.containerFormat);
+    });
+  }
   $('setFormatSort').value = cfg.formatSort || '';
   $('setRetries').value = cfg.retries || 3;
   $('setProxyUrl').value = cfg.proxyUrl || '';
@@ -1527,6 +1604,13 @@ const saveSettings = async () => {
       quotaBytes: parseInt(_humanQuota($('setQuotaSize')?.value || '')) || 0,
       quotaAutoClean: $('setQuotaAutoClean')?.checked || false,
       outputTemplate: $('setOutputTemplate')?.value.trim() || '%(title)s [%(id)s].%(ext)s',
+      // 质量预设 + 容器格式
+      qualityPreset: _selectedQuality || 'best',
+      containerFormat: document.querySelector('.container-btn.active')?.dataset?.container || 'auto',
+      // 网络弹性
+      fragmentRetries: 30,
+      retrySleep: 2,
+      socketTimeout: 30,
       // v0.5.0 高级
       useAria2c: $('setUseAria2c')?.value || 'auto',
       aria2cConnections: parseInt($('setAria2cConnections')?.value) || 16,

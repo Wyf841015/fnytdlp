@@ -102,6 +102,8 @@
       <button class="tab" data-filter="error" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="出错任务">出错 <span class="count" id="countError">0</span></button>
       <button class="tab" data-filter="video" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="视频任务">🎬 视频 <span class="count" id="countVideo">0</span></button>
       <button class="tab" data-filter="audio" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="音频任务">🎵 音频 <span class="count" id="countAudio">0</span></button>
+      <button class="tab" data-filter="paused" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="暂停任务">⏸ 暂停 <span class="count" id="countPaused">0</span></button>
+      <button class="tab" data-filter="cancelled" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="取消任务">⏹ 取消 <span class="count" id="countCancelled">0</span></button>
       <div class="tab-spacer"></div>
       <div class="tab-search">
         <input type="search" id="searchInput" class="tab-search-input" placeholder="🔍 搜索 URL / 文件名..." aria-label="搜索任务">
@@ -216,16 +218,6 @@
       <!-- 格式快速选择 + Cookie -->
       <div class="form-row add-options-row">
         <div class="form-group form-group-half">
-          <label class="form-label">快速格式</label>
-          <div class="format-pills" id="addFormatPills">
-            <button class="format-pill" data-value="bv*+ba/b" onclick="selectFormatPill(this)">最佳</button>
-            <button class="format-pill" data-value="bv*[height<=1080]+ba" onclick="selectFormatPill(this)">1080p</button>
-            <button class="format-pill" data-value="bv*[height<=720]+ba" onclick="selectFormatPill(this)">720p</button>
-            <button class="format-pill" data-value="ba" onclick="selectFormatPill(this)">仅音频</button>
-            <button class="format-pill" data-value="" onclick="selectFormatPill(this)">默认</button>
-          </div>
-        </div>
-        <div class="form-group form-group-half">
           <label class="form-label">Cookie 认证</label>
           <select class="select" id="addCookieName">
             <option value="">无</option>
@@ -233,6 +225,28 @@
         </div>
       </div>
 
+      <div class="form-row" style="gap:8px;margin-top:8px">
+        <div class="form-group" style="flex:1">
+          <label class="form-label">质量预设</label>
+          <div class="quality-presets" style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="quality-btn active" data-quality="best" onclick="selectQuality('best')">👑 最佳</button>
+            <button class="quality-btn" data-quality="good" onclick="selectQuality('good')">🎯 高清</button>
+            <button class="quality-btn" data-quality="normal" onclick="selectQuality('normal')">📺 标清</button>
+            <button class="quality-btn" data-quality="bad" onclick="selectQuality('bad')">📱 流畅</button>
+            <button class="quality-btn" data-quality="worst" onclick="selectQuality('worst')">⚡ 最低</button>
+          </div>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label class="form-label">容器格式 (借鉴 VidBee)</label>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="container-btn active" data-container="auto" onclick="selectContainer('auto')">🔄 自动</button>
+            <button class="container-btn" data-container="mp4" onclick="selectContainer('mp4')">🎬 MP4</button>
+            <button class="container-btn" data-container="mkv" onclick="selectContainer('mkv')">📦 MKV</button>
+            <button class="container-btn" data-container="webm" onclick="selectContainer('webm')">🌐 WebM</button>
+            <button class="container-btn" data-container="original" onclick="selectContainer('original')">📄 原始</button>
+          </div>
+        </div>
+      </div>
       <details class="form-advanced">
         <summary>高级选项</summary>
         <div class="form-group">
@@ -583,6 +597,7 @@
                 <label class="form-label form-label-inline"><input type="checkbox" id="setQuotaAutoClean"> 超额时自动清理</label>
                 <div class="form-hint">启用后, 每次添加新任务前自动删除最旧已完成任务直到满足配额</div>
                 <button class="btn btn-ghost" onclick="cleanQuotaNow()" type="button" style="margin-top:6px">🧹 立即清理</button>
+                <button class="btn btn-ghost" onclick="clearThumbnailCache()" type="button" style="margin-top:6px;margin-left:6px">🖼 清理缩略图缓存</button>
               </div>
             </div>
             <div class="form-group">

@@ -291,6 +291,27 @@ const detectArch = () => {
 const ARCH = detectArch();
 LOG('detected arch=' + ARCH + ' (process.arch=' + process.arch + ')');
 
+// ── 缩略图缓存 (借鉴 VidBee thumbnail-cache) ─────────────────────
+const _thumbnailCache = new Map();
+const THUMB_CACHE_MAX = 200;
+const THUMB_CACHE_TTL = 24 * 3600 * 1000; // 24h
+const getThumbnailCache = (url) => {
+  const entry = _thumbnailCache.get(url);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > THUMB_CACHE_TTL) {
+    _thumbnailCache.delete(url);
+    return null;
+  }
+  return entry;
+};
+const setThumbnailCache = (url, contentType, buffer) => {
+  if (_thumbnailCache.size >= THUMB_CACHE_MAX) {
+    const oldest = _thumbnailCache.keys().next().value;
+    if (oldest) _thumbnailCache.delete(oldest);
+  }
+  _thumbnailCache.set(url, { contentType, buffer, cachedAt: Date.now() });
+};
+
 // ── 订阅检查 ─────────────────────────────────────────────────
 const _subCheckRunning = { current: false };
 const checkSubscriptions = async (targetName) => {
@@ -449,8 +470,15 @@ const DEFAULT_CONFIG = {
   outputTemplate: '%(title)s [%(id)s].%(ext)s',
   format: 'bv*+ba/b',              // 默认 bestvideo+bestaudio / best
   formatSort: null,                // 例: 'res:1080,ext:mp4:m4a'
-  retries: 3,
+  retries: 30,
+  fragmentRetries: 30,
+  retrySleep: 2,
+  socketTimeout: 30,
   concurrentFragments: 4,
+  // 质量预设 (借鉴 VidBee format-preferences): best/good/normal/bad/worst
+  qualityPreset: 'best',
+  // 容器格式 (借鉴 VidBee OneClickContainer): auto/mp4/mkv/webm/original
+  containerFormat: 'auto',
   proxyUrl: '',
   noPlaylist: false,
   // Cookie 多网站列表: [{name, domain}] (文件存于 cookies/<safeName>.txt)
@@ -712,6 +740,36 @@ const createTask = (url, options = {}) => {
   return task;
 };
 
+// ── FSM 状态机 (借鉴 VidBee task-queue FSM) ──────────────────────────
+// 合法状态转换表: from -> [to, ...]
+const FSM_TRANSITIONS = {
+  'pending':    ['downloading', 'paused', 'cancelled'],
+  'downloading': ['processing', 'completed', 'error', 'retry-scheduled', 'paused', 'cancelled'],
+  'processing':  ['completed', 'error', 'retry-scheduled', 'paused', 'cancelled'],
+  'paused':      ['pending', 'cancelled', 'error'],
+  'retry-scheduled': ['pending', 'paused', 'cancelled'],
+  'error':       ['pending'],
+  'cancelled':   ['pending'],
+  'completed':   [],
+};
+const transitionTask = (task, toStatus, reason) => {
+  const from = task.status;
+  const allowed = FSM_TRANSITIONS[from];
+  if (!allowed || !allowed.includes(toStatus)) {
+    const err = `Illegal FSM transition: ${from} -> ${toStatus}${reason ? ' ('+reason+')' : ''}`;
+    LOG('[FSM]', err);
+    throw new Error(err);
+  }
+  task.status = toStatus;
+  task.updatedAt = Date.now();
+  if (['completed','error','cancelled'].includes(toStatus)) {
+    task._statusEndedAt = Date.now();
+  }
+  saveTasks();
+  broadcast('task-updated', task);
+  LOG('[FSM]', from, '->', toStatus, reason||'');
+};
+
 const listTasks = (filter = {}) => {
   let arr = Array.from(tasks.values());
   // 兜底: completed 任务若 filename 为空或是封面图, 从 downloadPath 找最新文件
@@ -766,7 +824,7 @@ const deleteTask = (id, opts = {}) => {
   const task = tasks.get(id);
   if (!task) return false;
   // 下载历史: 删除已完成/出错的任务时保存到历史记录
-  if (task.status === 'completed' || task.status === 'error') {
+  if (task.status === 'completed' || task.status === 'error' || task.status === 'cancelled') {
     addToHistory(task);
   }
   if (_procs.has(id)) {
@@ -833,16 +891,38 @@ const buildYtDlpArgs = (task) => {
   // feat3: 如果有下载文件夹则使用文件夹路径, 否则用默认 downloadPath
   const outputBase = opts._downloadFolder || config.downloadPath;
   args.push('-o', path.join(outputBase, outTpl));
-  // Format
-  if (opts.format) args.push('-f', opts.format);
-  else if (config.format) args.push('-f', config.format);
+  // Format (质量预设优先, 借鉴 VidBee format-preferences)
+  const qualityPreset = opts.qualityPreset || config.qualityPreset || 'best';
+  const QUALITY_PRESETS = {
+    'best':    { video: 'bestvideo', audio: 'bestaudio', height: null, abr: 320 },
+    'good':    { video: 'bestvideo[height<=1080]', audio: 'bestaudio[abr<=256]', height: 1080, abr: 256 },
+    'normal':  { video: 'bestvideo[height<=720]', audio: 'bestaudio[abr<=192]', height: 720, abr: 192 },
+    'bad':     { video: 'bestvideo[height<=480]', audio: 'bestaudio[abr<=128]', height: 480, abr: 128 },
+    'worst':   { video: 'worstvideo', audio: 'worstaudio', height: 360, abr: 96 },
+  };
+  const preset = QUALITY_PRESETS[qualityPreset] || QUALITY_PRESETS['best'];
+  if (opts.format) {
+    args.push('-f', opts.format);
+  } else if (config.format && !opts.qualityPreset) {
+    args.push('-f', config.format);
+  } else {
+    const isAudio = opts.extractAudio !== undefined ? opts.extractAudio : config.extractAudio;
+    if (isAudio) {
+      args.push('-f', `${preset.audio}/bestaudio/best`);
+    } else {
+      args.push('-f', `${preset.video}+${preset.audio}/${preset.video}/bestvideo+bestaudio/best`);
+    }
+  }
   // Format sort
   if (config.formatSort) args.push('-S', config.formatSort);
   // 并发分片
   const cf = opts.concurrentFragments ?? config.concurrentFragments ?? 4;
   if (cf > 0) args.push('--concurrent-fragments', String(cf));
-  // 重试
-  args.push('--retries', String(opts.retries ?? config.retries ?? 3));
+  // 网络弹性参数 (借鉴 VidBee appendNetworkResilienceArgs)
+  args.push('--retries', String(opts.retries ?? config.retries ?? 30));
+  args.push('--fragment-retries', String(opts.fragmentRetries ?? config.fragmentRetries ?? 30));
+  args.push('--retry-sleep', String(opts.retrySleep ?? config.retrySleep ?? 2));
+  args.push('--socket-timeout', String(opts.socketTimeout ?? config.socketTimeout ?? 30));
   // 嵌入元数据
   if (config.embedMetadata) args.push('--embed-metadata');
   // 字幕 (任务级/配置级)
@@ -915,8 +995,13 @@ const buildYtDlpArgs = (task) => {
   if (config.embedSubs && (config.writeSubs || config.writeAutoSubs)) args.push('--embed-subs');
   // 嵌入缩略图到视频
   if (config.embedThumbnail) args.push('--embed-thumbnail');
-  // 合并输出格式
-  if (config.mergeOutputFormat) args.push('--merge-output-format', String(config.mergeOutputFormat));
+  // 容器格式 (借鉴 VidBee OneClickContainer)
+  const container = opts.containerFormat || config.containerFormat || 'auto';
+  const CONTAINER_MAP = { 'mp4': 'mp4', 'mkv': 'mkv', 'webm': 'webm', 'original': '', 'auto': '' };
+  const containerVal = CONTAINER_MAP[container] || '';
+  if (containerVal) args.push('--merge-output-format', containerVal);
+  // 合并输出格式 (兼容旧配置)
+  if (config.mergeOutputFormat && !containerVal) args.push('--merge-output-format', String(config.mergeOutputFormat));
   // 增量下载 (避免重复)
   if (config.downloadArchive) {
     const ap = path.isAbsolute(config.downloadArchive) ? config.downloadArchive : path.join(DATA_DIR, config.downloadArchive);
@@ -1125,7 +1210,12 @@ const startTask = (id) => {
       task.status = 'error';
       // P2: 错误脱敏 (提取最后一行有效 stderr)
       const lastLine = stderrBuf.trim().split('\n').filter(l => l.trim()).pop() || 'unknown error';
-      task.error = `yt-dlp exit ${code}: ${lastLine.substring(0, 500)}`;
+      const guidance = classifyYtDlpError(lastLine);
+      task.error = `yt-dlp exit ${code}: ${lastLine.substring(0, 300)}`;
+      // 追加指导信息
+      if (guidance.guide) {
+        task.error += `\n💡 ${guidance.guide}`;
+      }
     }
     task.updatedAt = Date.now();
     saveTasks();
@@ -1702,6 +1792,34 @@ const enforceQuota = async () => {
 // ══════════════════════════════════════════════════════════════════
 // 模块 5: HTTP 请求处理 (路由 + 静态文件)
 // ══════════════════════════════════════════════════════════════════
+// ── yt-dlp 错误分类指导 (借鉴 VidBee download-error-guidance) ─────────
+const YTDLP_ERROR_GUIDANCE = [
+  { pattern: /sign in|login|auth|HTTP Error 403/i, guide: '需要登录或 Cookie 认证。请在设置中添加 Cookie 后重试', level: 'auth' },
+  { pattern: /HTTP Error 4\d{2}/i, guide: '服务器拒绝请求。URL 可能已失效或需要 Cookie', level: 'warn' },
+  { pattern: /HTTP Error 5\d{2}/i, guide: '视频源服务器暂时不可用，将自动重试', level: 'warn' },
+  { pattern: /Video unavailable|This video is not available/i, guide: '视频已下架或地域限制。检查 URL 是否正确', level: 'error' },
+  { pattern: /Unable to extract|No video formats found/i, guide: '无法解析此视频格式。可能是 yt-dlp 版本过旧', level: 'warn' },
+  { pattern: /ffmpeg|ffprobe not found/i, guide: '系统缺少 ffmpeg。请安装 ffmpeg: apt install ffmpeg', level: 'error' },
+  { pattern: /Requested format is not available/i, guide: '请求的格式不可用，尝试使用默认格式', level: 'warn' },
+  { pattern: /timed out|Timeout|timeout/i, guide: '网络超时。系统将自动重试，请检查网络连接', level: 'warn' },
+  { pattern: /Premieres|premiere/i, guide: '这是预告视频，尚未正式发布，请稍后再试', level: 'info' },
+  { pattern: /Private video/i, guide: '此视频已设为私密，无法下载', level: 'error' },
+  { pattern: /Members only|membership/i, guide: '此视频仅限会员观看，需 Cookie 登录后下载', level: 'auth' },
+  { pattern: /Copyright|takedown/i, guide: '此视频因版权问题已被下架', level: 'error' },
+  { pattern: /Geoblocked|geo restricted/i, guide: '此视频受地域限制，当前地区无法访问', level: 'warn' },
+  { pattern: /Insufficient|quota exceeded/i, guide: 'API 配额已用完，请稍后再试', level: 'warn' },
+  { pattern: /No such file|file not found|ENOENT/i, guide: '下载路径不存在或无法访问，请检查下载路径设置', level: 'error' },
+  { pattern: /Disk full|No space/i, guide: '磁盘空间不足，请清理磁盘后重试', level: 'error' },
+  { pattern: /Permission denied|EACCES/i, guide: '权限不足，请检查下载目录权限', level: 'error' },
+];
+const classifyYtDlpError = (errorText) => {
+  if (!errorText) return { guide: '未知错误', level: 'error' };
+  for (const rule of YTDLP_ERROR_GUIDANCE) {
+    if (rule.pattern.test(errorText)) return { guide: rule.guide, level: rule.level };
+  }
+  return { guide: '下载失败，请检查网络和 URL 正确性', level: 'warn' };
+};
+
 // ── request handler ───────────────────────────────────────────────────
 const handle = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1765,7 +1883,7 @@ const handle = async (req, res) => {
         startTask(task.id);
         sendJSON(res, 200, { task });
       }
-    // v0.6.0: 字幕 VTT/SRT 转纯文本 (借鉴 uvd subtitle_extractor)
+// v0.6.0: 字幕 VTT/SRT 转纯文本 (借鉴 uvd subtitle_extractor)
 const _subtitleToText = (content) => {
   if (!content || typeof content !== 'string') return '';
   let text = content;
@@ -2297,17 +2415,36 @@ const startAISummary = async (url) => {
       if (t.status !== 'completed' || !t.result) return sendJSON(res, 202, { error: '总结尚未完成' });
       sendJSON(res, 200, { task_id: t.taskId, status: t.status, video_title: t.videoTitle, result: t.result });
     }
+    // ── 缩略图缓存 ──
+    else if (pathname === '/api/thumbnail-cache/clear' && req.method === 'POST') {
+      _thumbnailCache.clear();
+      sendJSON(res, 200, { ok: true, cleared: true });
+    }
+    // ── 错误指导 (前端离线分类) ──
+    else if (pathname === '/api/error-guidance' && req.method === 'POST') {
+      const body = await parseBodySafe(req);
+      const errorText = (body.error || '').trim();
+      if (!errorText) return sendJSON(res, 400, { error: 'error text required' });
+      sendJSON(res, 200, classifyYtDlpError(errorText));
+    }
     // ── config API ──
     else if (pathname === '/api/config' && req.method === 'GET') {
       sendJSON(res, 200, { ...config });
     }
-    // v0.6.0: 缩略图代理 (借鉴 uvd, 解决防盗链/跨域)
+    // v0.6.0: 缩略图代理 + 缓存 (借鉴 VidBee thumbnail-cache)
     else if (pathname === '/api/proxy-thumbnail' && req.method === 'GET') {
       try {
         const u = new URL(req.url, 'http://localhost');
         const target = u.searchParams.get('url') || '';
         if (!target || !/^https?:\/\//i.test(target)) {
           res.writeHead(400); res.end('Invalid url'); return;
+        }
+        // 缓存命中
+        const cached = getThumbnailCache(target);
+        if (cached) {
+          res.writeHead(200, { 'Content-Type': cached.contentType, 'Cache-Control': 'public, max-age=86400' });
+          res.end(cached.buffer);
+          return;
         }
         const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
         // 抖音 CDN 需要固定 Referer
@@ -2322,6 +2459,8 @@ const startAISummary = async (url) => {
         }
         const contentType = proxyResp.headers.get('content-type') || 'image/jpeg';
         const buf = Buffer.from(await proxyResp.arrayBuffer());
+        // 写入缓存
+        setThumbnailCache(target, contentType, buf);
         res.writeHead(200, {
           'Content-Type': contentType,
           'Content-Length': buf.length,
