@@ -613,13 +613,31 @@ describe('v0.5.0 DEFAULT_CONFIG 新字段', () => {
 
 describe('v0.5.0 buildYtDlpArgs 新参数', () => {
   it('--download-sections 注入', () => {
-    assert.match(serverSrc, /config\.downloadSections\)\s*args\.push\('--download-sections'/);
+    assert.match(serverSrc, /sections\)\s*args\.push\('--download-sections'/);
   });
   it('--force-keyframes-at-cuts 注入', () => {
     assert.match(serverSrc, /forceKeyframesAtCuts\)\s*args\.push\('--force-keyframes-at-cuts'/);
   });
   it('--external-downloader aria2c', () => {
     assert.match(serverSrc, /args\.push\('--external-downloader', ARIA2C_BIN\)/);
+  });
+  it('--retries 默认 30 (网络弹性)', () => {
+    assert.match(serverSrc, /retries \?\? config\.retries \?\? 30/);
+  });
+  it('qualityPreset 格式生成', () => {
+    assert.match(serverSrc, /QUALITY_PRESETS\[qualityPreset\]/);
+  });
+  it('FSM 状态转换表', () => {
+    assert.match(serverSrc, /const FSM_TRANSITIONS/);
+  });
+  it('classifyYtDlpError 错误分类', () => {
+    assert.match(serverSrc, /const classifyYtDlpError/);
+  });
+  it('缩略图缓存', () => {
+    assert.match(serverSrc, /const _thumbnailCache/);
+  });
+  it('containerFormat 容器格式', () => {
+    assert.match(serverSrc, /const CONTAINER_MAP/);
   });
   it('--external-downloader-args aria2c 配置', () => {
     assert.match(serverSrc, /args\.push\('--external-downloader-args'/);
