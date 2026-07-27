@@ -2674,7 +2674,24 @@ const openPlayer = async (id) => {
     toast(`无可播放的文件 (状态: ${t?.status || '不存在'})`, 'warn');
     return;
   }
-  // Bug 1+2 修复: 确保播放器 DOM 存在 (fnOS WebView 可能找不到 HTML 元素)
+  // Bug 1+2 修复: 用新窗口打开独立 player.html, 绕过 fnOS WebView 模态框渲染 bug
+  // modal 渲染层在某些 WebView 上不绘制 (CEF 已知问题)
+  const playUrl = `${API._url('/player.html')}?id=${encodeURIComponent(id)}&t=${encodeURIComponent(t.title || t.filename || id)}`;
+  console.log('[openPlayer] opening new window:', playUrl);
+  const newWin = window.open(playUrl, '_blank');
+  if (!newWin) {
+    // 兜底: 弹出警告, 让用户检查弹窗拦截
+    toast('请允许浏览器弹窗以打开视频播放器', 'warn', 5000);
+    console.warn('[openPlayer] window.open returned null, popup blocked?');
+    // 兜底方案 2: 直接跳转到 /api/play/{id} (浏览器会用内置播放器)
+    if (confirm('弹窗被拦截, 是否直接跳转到视频 URL?')) {
+      location.href = API._url(`/api/play/${id}`);
+    }
+  }
+  return;
+  // 下面 modal 流程保留作为回退
+  /* === 旧 modal 流程 (已被新窗口方案替代) === */
+  if (false) { // Bug 1+2 修复: 确保播放器 DOM 存在 (fnOS WebView 可能找不到 HTML 元素)
   let playerModal = $('playerModal');
   if (!playerModal) {
     // 动态创建播放器 modal
@@ -2825,6 +2842,7 @@ const openPlayer = async (id) => {
   showModal('playerModal');
   // 自动播放 (静默吞 promise rejection — 真错误已经在上面 onerror 处理)
   video.play().catch(() => {});
+  } // 闭合 if (false) 旧 modal 流程
 };
 window.openPlayer = openPlayer;
 
