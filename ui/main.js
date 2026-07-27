@@ -797,6 +797,10 @@ const renderTask = (t) => {
 const rewireInlineOnclick = (root) => {
   const scope = root || document;
   scope.querySelectorAll('[onclick]:not(#settingsBtn)').forEach(el => {
+    // P0-3 性能修复: 跳过已劫持的元素 (el._fnytdlpWired 标记)
+    // 全表 8 按钮/任务 × 50 任务 = 400 次 new Function 构造, 每次重渲都跑
+    // 改为幂等: 已劫持的 element 跳过 removeAttribute/addEventListener
+    if (el._fnytdlpWired) return;
     const attr = el.getAttribute('onclick');
     if (!attr) return;
     el.removeAttribute('onclick');
@@ -833,6 +837,8 @@ const rewireInlineOnclick = (root) => {
         console.error('[fnytdlp] onclick err:', attr, err);
       }
     });
+    // 标记已劫持
+    el._fnytdlpWired = true;
   });
 };
 window.rewireInlineOnclick = rewireInlineOnclick;
