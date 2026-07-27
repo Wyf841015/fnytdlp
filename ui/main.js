@@ -2704,8 +2704,34 @@ const openPlayer = async (id) => {
     info.textContent = '❌ 错误: ' + name + ' | URL: ' + src;
     console.error('[openPlayer] <video> error', err, 'src=', src);
   };
-  video.src = src;
-  video.load();
+  // Bug 1+2 终极修复: 用 fetch 拿视频 → blob URL → 给 <video>
+  // 绕过 fnOS 网关对原生 <video src> 的拦截 (direct asset request 被网关劫持)
+  try {
+    info.textContent = '⏳ 正在下载视频到内存...';
+    const resp = await fetch(src, { credentials: 'same-origin' });
+    if (!resp.ok) {
+      info.textContent = `❌ HTTP ${resp.status} ${resp.statusText}`;
+      console.error('[openPlayer] fetch HTTP', resp.status, src);
+      return;
+    }
+    const ct = resp.headers.get('content-type') || '';
+    if (!ct.startsWith('video/') && !ct.startsWith('audio/')) {
+      info.textContent = `❌ 非视频类型: ${ct} (fnOS 网关鉴权可能在拦截)`;
+      console.error('[openPlayer] non-video content-type:', ct, 'src=', src);
+      return;
+    }
+    const blob = await resp.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    info.textContent = `✅ 已加载 (${(blob.size/1024/1024).toFixed(1)} MB, ${ct})`;
+    video.src = blobUrl;
+    video.load();
+    console.log('[openPlayer] blob URL set, size=', blob.size, 'type=', ct);
+    video.onended = () => URL.revokeObjectURL(blobUrl);
+  } catch (e) {
+    info.textContent = '❌ 加载失败: ' + (e.message || e);
+    console.error('[openPlayer] fetch blob failed:', e);
+    return;
+  }
   // HTML5 原生 <dialog>.showModal() - 浏览器自带 modal, 绕过所有 CSS 渲染 bug
   try {
     if (typeof dlg.showModal === 'function') {
