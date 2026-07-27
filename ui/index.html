@@ -106,6 +106,7 @@
       <button class="tab" data-filter="cancelled" role="tab" aria-selected="false" aria-controls="taskList" tabindex="-1" aria-label="取消任务">⏹ 取消 <span class="count" id="countCancelled">0</span></button>
       <div class="tab-spacer"></div>
       <div class="tab-search">
+        <label for="searchInput" class="sr-only">搜索任务</label>
         <input type="search" id="searchInput" class="tab-search-input" placeholder="🔍 搜索 URL / 文件名..." aria-label="搜索任务">
       </div>
     </div>
@@ -309,6 +310,7 @@
     <div class="modal-body">
       <div class="form-group">
         <label class="form-label">URL</label>
+        <label for="infoUrl" class="form-label">URL</label>
         <input class="input" id="infoUrl" placeholder="https://...">
       </div>
       <div id="infoResult" class="info-preview" style="max-height:50vh;overflow-y:auto">输入 URL 点解析</div>
@@ -330,6 +332,7 @@
     <div class="modal-body">
       <div class="form-group">
         <div class="input-group">
+          <label for="searchQuery" class="sr-only">搜索关键词</label>
           <input class="input" id="searchQuery" placeholder="输入关键词搜索 YouTube / B站 等..." onkeydown="if(event.key==='Enter')doSearch()">
           <button class="btn btn-primary" onclick="doSearch()">🔍 搜索</button>
         </div>
@@ -354,6 +357,7 @@
     </div>
     <div class="modal-body">
       <div class="form-group" style="display:flex;gap:8px;margin-bottom:12px">
+        <label for="historySearch" class="sr-only">搜索历史记录</label>
         <input class="input" id="historySearch" placeholder="搜索历史记录..." oninput="loadHistory()" style="flex:1">
         <button class="btn btn-ghost" onclick="clearHistory()" style="flex-shrink:0">🗑 清空全部</button>
       </div>

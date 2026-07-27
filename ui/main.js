@@ -175,6 +175,20 @@ const toast = (msg, type = 'info', duration = 2400) => {
   setTimeout(() => el.remove(), duration + 600);
 };
 
+// P0 audit: 按钮 loading 状态 (防重复提交)
+const setLoading = (btn, loading) => {
+  if (!btn) return;
+  if (loading) {
+    btn._origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add('btn-loading');
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('btn-loading');
+    if (btn._origText) btn.innerHTML = btn._origText;
+  }
+};
+
 // ── modal helpers ──────────────────────────────────────────────────
 const showModal = (id) => {
   const el = $(id);
