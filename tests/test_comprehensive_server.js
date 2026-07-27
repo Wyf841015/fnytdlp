@@ -662,8 +662,8 @@ describe('v0.5.0 新增 API 端点', () => {
   it('POST /api/config/import-yt-dlp-conf', () => {
     assert.match(serverSrc, /pathname === '\/api\/config\/import-yt-dlp-conf'/);
   });
-  it('/api/health 加 aria2cExists + ytDlpLatest', () => {
-    assert.match(serverSrc, /aria2cExists:\s*fs\.existsSync\(ARIA2C_BIN\)/);
+  it('/api/health 加 aria2cExists + ytDlpLatest (P1-7: 走缓存 _binExists.aria2c)', () => {
+    assert.match(serverSrc, /aria2cExists:\s*_binExists\.aria2c/);
     assert.match(serverSrc, /ytDlpLatest:\s*_ytDlpLatestVersion/);
   });
 });

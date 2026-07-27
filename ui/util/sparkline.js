@@ -1,8 +1,13 @@
 // Sparkline — lightweight canvas-based micro chart for KPI cards
 // Each instance maintains its own rolling buffer and renders a smooth line + filled area.
+// P1-5 性能修复: 共享全局 _sharedTimer, 多个 Sparkline 实例共用一个 setInterval
+// 替代每个实例独立 _timer (4 个 sparkline = 4 个 setInterval)
 
 const SPARK_MAX_SAMPLES = 30;     // ~30 samples × 2s = 60s history window
 const SPARK_DEFAULT_INTERVAL = 2000;
+
+let _sparklineInstances = new Set();
+let _sharedTimer = null;
 
 class Sparkline {
   constructor(canvasId, options = {}) {
@@ -53,14 +58,19 @@ class Sparkline {
   start(initialValue = 0) {
     this.buffer = new Array(this.maxSamples).fill(initialValue);
     this.render();
-    if (this._timer) clearInterval(this._timer);
-    this._timer = setInterval(() => this._tick(), this.interval);
+    _sparklineInstances.add(this);
+    if (!_sharedTimer) {
+      _sharedTimer = setInterval(() => {
+        for (const inst of _sparklineInstances) inst._tick();
+      }, SPARK_DEFAULT_INTERVAL);
+    }
   }
 
   stop() {
-    if (this._timer) {
-      clearInterval(this._timer);
-      this._timer = null;
+    _sparklineInstances.delete(this);
+    if (_sparklineInstances.size === 0 && _sharedTimer) {
+      clearInterval(_sharedTimer);
+      _sharedTimer = null;
     }
   }
 

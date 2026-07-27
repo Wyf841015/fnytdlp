@@ -83,6 +83,12 @@ const YT_DLP_BIN = pickYtDlpBin();
 const FFMPEG_BIN = process.env.FFMPEG_BIN || '/usr/bin/ffmpeg';
 // aria2c 外部下载器 (可选, 不存在时降级 yt-dlp 内置)
 const ARIA2C_BIN = process.env.ARIA2C_BIN || '/usr/bin/aria2c';
+// P1-7 性能修复: 启动时一次性算 3 个 binExists, 后续 /api/health 返缓存
+const _binExists = {
+  ytDlp: fs.existsSync(YT_DLP_BIN),
+  ffmpeg: fs.existsSync(FFMPEG_BIN),
+  aria2c: fs.existsSync(ARIA2C_BIN),
+};
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -176,7 +182,18 @@ const checkYtDlpUpdate = async () => {
 setTimeout(() => { checkYtDlpUpdate().catch(() => {}); }, 3000);
 
 // v0.5.0: 从 archive 文件读已下载的 videoId 集合 (--download-archive)
+// P1-1 性能修复: 启动时一次加载 + 内存缓存 (按 mtime 失效), 避免每次 POST /api/tasks 都 readFileSync
+let _archiveIdsCache = new Set();
+let _archiveIdsCachePath = null;
+let _archiveIdsCacheMtime = 0;
 const readArchiveIds = (archivePath) => {
+  // 缓存命中: 同 path + mtime 没变 → 返缓存
+  if (_archiveIdsCachePath === archivePath && _archiveIdsCacheMtime > 0) {
+    try {
+      const m = fs.statSync(archivePath).mtimeMs;
+      if (m === _archiveIdsCacheMtime) return _archiveIdsCache;
+    } catch (e) {}
+  }
   const ids = new Set();
   try {
     if (!archivePath || !fs.existsSync(archivePath)) return ids;
@@ -185,7 +202,10 @@ const readArchiveIds = (archivePath) => {
       const m = line.trim().match(/^[a-z]+\s+(\S+)/i);
       if (m) ids.add(m[1]);
     }
+    _archiveIdsCacheMtime = fs.statSync(archivePath).mtimeMs;
   } catch (e) { LOG('[archive] read failed:', e.message); }
+  _archiveIdsCachePath = archivePath;
+  _archiveIdsCache = ids;
   return ids;
 };
 
@@ -553,10 +573,23 @@ const _atomicWrite = (filePath, data) => {
   fs.renameSync(tmp, filePath);
 };
 const saveConfig = () => {
+  // P1-2 性能修复: 跟 saveTasks 一样 debounce 500ms + 无缩进 JSON
+  if (_saveConfigTimer) return;
+  _saveConfigTimer = setTimeout(() => {
+    _saveConfigTimer = null;
+    try {
+      _atomicWrite(CONFIG_FILE, JSON.stringify(config));
+    } catch (e) { LOG('config save failed:', e.message); }
+  }, 500);
+};
+// 立即同步落盘 (关键操作, 如 shutdown 时)
+const saveConfigNow = () => {
+  if (_saveConfigTimer) { clearTimeout(_saveConfigTimer); _saveConfigTimer = null; }
   try {
-    _atomicWrite(CONFIG_FILE, JSON.stringify(config, null, 2));
+    _atomicWrite(CONFIG_FILE, JSON.stringify(config));
   } catch (e) { LOG('config save failed:', e.message); }
 };
+let _saveConfigTimer = null;
 loadConfig();
 LOG('config loaded, downloadPath=' + config.downloadPath);
 
@@ -1171,10 +1204,16 @@ const startTask = (id) => {
       _applyProgressLine(task, line);
       // v0.6.0: 速度历史采样 (任务详情 modal 渲染速度曲线)
       if (typeof task.speed === 'number' && task.speed >= 0) {
+        // P1-4 性能修复: 200ms 节流 push (原每行 PROGRESS 都 push, 高频时 array 操作浪费)
+        // 速度曲线 200ms 粒度足够, 200 个采样点 = 40 秒历史
+        const now = Date.now();
         if (!task._speedHistory) task._speedHistory = [];
-        task._speedHistory.push({ t: Date.now(), bps: task.speed, p: task.progress || 0 });
-        // 上限 200 个采样点 (避免内存爆掉)
-        if (task._speedHistory.length > 200) task._speedHistory.shift();
+        const last = task._speedHistory[task._speedHistory.length - 1];
+        if (!last || now - last.t >= 200) {
+          task._speedHistory.push({ t: now, bps: task.speed, p: task.progress || 0 });
+          // 上限 200 个采样点 (避免内存爆掉)
+          if (task._speedHistory.length > 200) task._speedHistory.shift();
+        }
       }
       if (task.progress !== beforeProgress || task.filename !== beforeFilename) {
         task.updatedAt = Date.now();
@@ -2134,7 +2173,8 @@ const startAISummary = async (url) => {
       const infoPath = path.join(folder, 'info.txt');
       try {
         if (!fs.existsSync(infoPath)) return sendJSON(res, 404, { error: 'info.txt not found' });
-        const content = fs.readFileSync(infoPath, 'utf8');
+        // P1-6 性能修复: 改异步 readFile (不阻塞 event loop)
+        const content = await fs.promises.readFile(infoPath, 'utf8');
         sendJSON(res, 200, { content });
       } catch (e) {
         sendJSON(res, 500, { error: e.message });
@@ -2158,7 +2198,8 @@ const startAISummary = async (url) => {
           const m = files.find(f => f.includes(`.${lang}.`) || f.includes(`-${lang}.`) || f.endsWith(`.${lang}.vtt`) || f.endsWith(`.${lang}.srt`));
           if (m) { chosen = m; break; }
         }
-        const raw = fs.readFileSync(path.join(folder, chosen), 'utf8');
+        // P1-6 性能修复: 改异步 readFile (字幕文件可能 100KB+, 同步阻塞严重)
+        const raw = await fs.promises.readFile(path.join(folder, chosen), 'utf8');
         const text = _subtitleToText(raw);
         sendJSON(res, 200, { file: chosen, text, length: text.length });
       } catch (e) {
@@ -2632,7 +2673,9 @@ const startAISummary = async (url) => {
     }
     // ── system ──
     else if (pathname === '/api/health') {
-      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: fs.existsSync(YT_DLP_BIN), ffmpegExists: fs.existsSync(FFMPEG_BIN), aria2cExists: fs.existsSync(ARIA2C_BIN), ytDlpLatest: _ytDlpLatestVersion, version: VERSION });
+      // P1-7 性能修复: 启动时一次性算 3 个 binExists, 缓存
+      // 原: 每次 /api/health 都 fs.existsSync 3 次, 路径不变化的情况下重复 syscall
+      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: _binExists.ytDlp, ffmpegExists: _binExists.ffmpeg, aria2cExists: _binExists.aria2c, ytDlpLatest: _ytDlpLatestVersion, version: VERSION });
     } else if (pathname === '/api/events') {
       handleSSE(req, res);
     }
@@ -2651,7 +2694,9 @@ const startAISummary = async (url) => {
 // parseBody 容错版：空 body 返 {} 而非 reject
 const parseBodySafe = (req) => parseBody(req).then(b => b || {}).catch(() => ({}));
 const parseBody = (req) => new Promise((resolve, reject) => {
-  let body = '';
+  // P1-3 性能修复: 用 Buffer.concat 替代 body += c 字符串拼接
+  // 2MB body 时多次重分配, Buffer.concat 一次性分配
+  const chunks = [];
   let bytes = 0;
   const MAX_BODY = 2097152; // 2MB
   req.on('data', c => {
@@ -2660,11 +2705,15 @@ const parseBody = (req) => new Promise((resolve, reject) => {
       req.destroy(new Error('Request body too large (max 2MB)'));
       return;
     }
-    body += c;
+    chunks.push(c);
   });
   req.on('end', () => {
-    if (!body) return resolve({});
-    try { resolve(JSON.parse(body)); } catch (e) { reject(new Error('Invalid JSON')); }
+    if (bytes === 0) return resolve({});
+    try {
+      // Buffer.concat 一次性合并, 然后 toString('utf8') 一次
+      const body = Buffer.concat(chunks, bytes).toString('utf8');
+      resolve(JSON.parse(body));
+    } catch (e) { reject(new Error('Invalid JSON')); }
   });
   req.on('error', reject);
 });
