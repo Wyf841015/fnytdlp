@@ -2658,32 +2658,39 @@ const MEDIA_ERROR_NAMES = {
 const openPlayer = async (id) => {
   const t = tasks.find(x => x.id === id);
   if (!t || t.status !== 'completed') { toast('无可播放的文件', 'warn'); return; }
+  // Bug 1+2 修复: 确保播放器 DOM 存在 (fnOS WebView 可能找不到 HTML 元素)
+  let playerModal = $('playerModal');
+  if (!playerModal) {
+    // 动态创建播放器 modal
+    playerModal = document.createElement('div');
+    playerModal.className = 'modal-overlay';
+    playerModal.id = 'playerModal';
+    playerModal.innerHTML = '<div class="modal modal-fullscreen">'
+      + '<div class="modal-header"><h2 class="modal-title">▶ 视频播放</h2><div class="modal-header-actions"><button class="btn-icon" onclick="closePlayer()">✕</button></div></div>'
+      + '<div class="modal-body player-body"><video id="playerVideo" class="player-video" controls autoplay preload="auto" playsinline>您的浏览器不支持视频播放</video></div>'
+      + '<div class="modal-footer"><span id="playerInfo" class="player-info"></span><button class="btn btn-ghost" onclick="closePlayer()">关闭</button></div>'
+      + '</div>';
+    document.body.appendChild(playerModal);
+  }
   let video = $('playerVideo');
   let info = $('playerInfo');
-  // Bug 1+2 修复: 如果播放器元素不存在, 动态创建 (兼容某些 WebView 加载顺序)
   if (!video || !info) {
-    console.warn('[openPlayer] playerVideo/playerInfo not found, creating dynamically');
-    toast('播放器初始化中...', 'info', 3000);
-    // 尝试创建播放器 modal
-    const playerModal = $('playerModal');
-    if (playerModal) {
-      // 如果 modal 存在但内部元素缺失, 重建内部
-      const body = playerModal.querySelector('.modal-body');
-      const footer = playerModal.querySelector('.modal-footer');
-      if (body) {
-        body.innerHTML = '<video id="playerVideo" class="player-video" controls autoplay preload="auto" playsinline>您的浏览器不支持视频播放</video>';
-      }
-      if (footer) {
+    // 重建内部元素
+    const body = playerModal.querySelector('.modal-body');
+    const footer = playerModal.querySelector('.modal-footer');
+    if (body) body.innerHTML = '<video id="playerVideo" class="player-video" controls autoplay preload="auto" playsinline>您的浏览器不支持视频播放</video>';
+    if (footer) {
+      const oldInfo = footer.querySelector('#playerInfo');
+      if (!oldInfo) {
         const infoSpan = document.createElement('span');
         infoSpan.id = 'playerInfo';
         infoSpan.className = 'player-info';
         footer.prepend(infoSpan);
       }
-      video = $('playerVideo');
-      info = $('playerInfo');
     }
+    video = $('playerVideo');
+    info = $('playerInfo');
     if (!video || !info) {
-      console.error('[openPlayer] cannot create player elements');
       toast('播放器初始化失败', 'error', 5000);
       return;
     }
