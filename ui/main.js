@@ -765,7 +765,7 @@ const renderTask = (t) => {
         <div class="task-actions" onclick="event.stopPropagation()" data-no-rewire>
           ${showActions ? `<button class="btn-icon-sm" title="重试" data-action="retry" data-id="${esc(t.id)}">🔄</button>` : ''}
           ${canStop ? `<button class="btn-icon-sm" title="停止" data-action="stop" data-id="${esc(t.id)}">⏹</button>` : ''}
-          ${canPlay ? `<a class="btn-icon-sm" title="下载/播放" data-no-rewire href="${API._url(`/api/play/${encodeURIComponent(t.id)}`)}" download="${esc(t.filename || (t.title + '.mp4'))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();return true">▶</a>` : ''}
+          ${canPlay ? `<a class="btn-icon-sm" title="播放" data-no-rewire href="#" onclick="event.stopPropagation();event.preventDefault();openPlayer('${esc(t.id)}');return false">▶</a>` : ''}
           <button class="btn-icon-sm" title="删除" data-action="delete" data-id="${esc(t.id)}">🗑</button>
         </div>
       </div>
@@ -2431,9 +2431,9 @@ function showTaskDetail(id) {
   if (playBtn) {
     // Bug 1+2 修复: 已完成任务就显示播放按钮, 让后端 /api/play/:id 决定能否播放
     playBtn.style.display = (t.status === 'completed') ? '' : 'none';
-    // 用 <a target="_blank" href="player.html?id=X"> 直接打开新窗口
-    // 不用 JS 拦截, fnOS WebView 对原生 <a target="_blank"> 支持最好
-    playBtn.href = API._url(`/api/play/${encodeURIComponent(id)}`); playBtn.download = t.filename || (t.title + '.mp4');
+    // <a href=# onclick=openPlayer(id) return false - 浏览器原生 <a> 支持最好
+    playBtn.href = '#';
+    playBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openPlayer(id); return false; };
   }
   // v0.6.0: 渲染下载速度曲线
   renderSpeedChart(t);
@@ -2666,23 +2666,45 @@ const openPlayer = async (id) => {
     toast(`无可播放的文件 (状态: ${t?.status || '不存在'})`, 'warn');
     return;
   }
-  // Bug 1+2 修复: 用新窗口打开独立 player.html, 绕过 fnOS WebView 模态框渲染 bug
-  // modal 渲染层在某些 WebView 上不绘制 (CEF 已知问题)
-  const playUrl = API._url(`/api/play/${encodeURIComponent(id)}`);
-  console.log('[openPlayer] opening new window:', playUrl);
-  const newWin = window.open(playUrl, '_blank');
-  if (!newWin) {
-    // 兜底: 弹出警告, 让用户检查弹窗拦截
-    toast('请允许浏览器弹窗以打开视频播放器', 'warn', 5000);
-    console.warn('[openPlayer] window.open returned null, popup blocked?');
-    // 兜底方案 2: 直接跳转到 /api/play/{id} (浏览器会用内置播放器)
-    if (confirm('弹窗被拦截, 是否直接跳转到视频 URL?')) {
-      location.href = API._url(`/api/play/${id}`);
-    }
+  // Bug 1+2 修复: 用 HTML5 原生 <dialog> 元素弹出播放器
+  // fnOS WebView (CEF) 对自定义 modal 渲染有 bug, 但原生 <dialog> 是浏览器自带
+  const dlg = $('playerDialog');
+  const video = $('playerDialogVideo');
+  const title = $('playerDialogTitle');
+  const info = $('playerDialogInfo');
+  if (!dlg || !video || !title || !info) {
+    toast('播放器未加载, 请刷新页面', 'error', 5000);
+    console.error('[openPlayer] dialog elements missing', { dlg, video, title, info });
+    return;
   }
-  return;
-  // 下面 modal 流程保留作为回退
-  /* === 旧 modal 流程 (已被新窗口方案替代) === */
+  title.textContent = '▶ ' + (t.title || t.filename || 'video');
+  const src = API._url(`/api/play/${encodeURIComponent(id)}`);
+  info.textContent = '来源: ' + src;
+  video.onerror = () => {
+    const err = video.error;
+    const names = { 1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED' };
+    const name = names[err?.code] || `CODE_${err?.code}`;
+    info.textContent = '❌ 错误: ' + name + ' | URL: ' + src;
+    console.error('[openPlayer] <video> error', err, 'src=', src);
+  };
+  video.src = src;
+  video.load();
+  // HTML5 原生 <dialog>.showModal() - 浏览器自带 modal, 绕过所有 CSS 渲染 bug
+  try {
+    if (typeof dlg.showModal === 'function') {
+      dlg.showModal();
+      console.log('[openPlayer] dialog.showModal() called');
+    } else {
+      // 老浏览器 fallback: 把 <dialog> 设为显示
+      dlg.setAttribute('open', '');
+      console.warn('[openPlayer] dialog.showModal not supported, using open attribute');
+    }
+  } catch (e) {
+    console.error('[openPlayer] dialog.showModal failed', e);
+    dlg.setAttribute('open', '');
+  }
+  video.play().catch(() => {});
+  /* === 旧 modal 流程已被 <dialog> 替代 === */
   if (false) { // Bug 1+2 修复: 确保播放器 DOM 存在 (fnOS WebView 可能找不到 HTML 元素)
   let playerModal = $('playerModal');
   if (!playerModal) {
@@ -2839,9 +2861,19 @@ const openPlayer = async (id) => {
 window.openPlayer = openPlayer;
 
 const closePlayer = () => {
-  const video = $('playerVideo');
+  const video = $('playerDialogVideo');
   if (video) { video.pause(); video.src = ''; }
-  hideModal('playerModal');
+  const dlg = $('playerDialog');
+  if (dlg) {
+    if (typeof dlg.close === 'function') {
+      dlg.close();
+    } else {
+      dlg.removeAttribute('open');
+    }
+  }
+  // 旧 modal 兜底清理
+  const oldModal = $('playerModal');
+  if (oldModal) hideModal('playerModal');
 };
 window.closePlayer = closePlayer;
 window._currentDetailTaskId = _currentDetailTaskId;
