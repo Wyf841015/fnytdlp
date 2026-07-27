@@ -762,10 +762,10 @@ const renderTask = (t) => {
           </div>
           <div class="task-url-sub" title="${esc(t.url)}">${esc(t.url)}</div>
         </div>
-        <div class="task-actions" onclick="event.stopPropagation()" data-no-rewire>
+        <div class="task-actions">
           ${showActions ? `<button class="btn-icon-sm" title="重试" data-action="retry" data-id="${esc(t.id)}">🔄</button>` : ''}
           ${canStop ? `<button class="btn-icon-sm" title="停止" data-action="stop" data-id="${esc(t.id)}">⏹</button>` : ''}
-          ${canPlay ? `<a class="btn-icon-sm" title="播放" data-no-rewire data-action="play" data-id="${esc(t.id)}" href="javascript:void(0)">▶</a>` : ''}
+          ${canPlay ? `<button class="btn-icon-sm" title="播放" data-action="play" data-id="${esc(t.id)}">▶</button>` : ''}
           <button class="btn-icon-sm" title="删除" data-action="delete" data-id="${esc(t.id)}">🗑</button>
         </div>
       </div>
