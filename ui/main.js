@@ -765,7 +765,7 @@ const renderTask = (t) => {
         <div class="task-actions" onclick="event.stopPropagation()" data-no-rewire>
           ${showActions ? `<button class="btn-icon-sm" title="重试" data-action="retry" data-id="${esc(t.id)}">🔄</button>` : ''}
           ${canStop ? `<button class="btn-icon-sm" title="停止" data-action="stop" data-id="${esc(t.id)}">⏹</button>` : ''}
-          ${canPlay ? `<a class="btn-icon-sm" title="播放" data-no-rewire href="#" onclick="event.stopPropagation();event.preventDefault();openPlayer('${esc(t.id)}');return false">▶</a>` : ''}
+          ${canPlay ? `<a class="btn-icon-sm" title="播放" data-no-rewire data-action="play" data-id="${esc(t.id)}" href="javascript:void(0)">▶</a>` : ''}
           <button class="btn-icon-sm" title="删除" data-action="delete" data-id="${esc(t.id)}">🗑</button>
         </div>
       </div>
