@@ -2704,13 +2704,29 @@ const openPlayer = async (id) => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const probe = await fetch(src, { method: 'GET', headers: { 'Range': 'bytes=0-0' }, signal: controller.signal });
+    // Bug 1+2 修复: redirect: 'manual' 检测网关鉴权重定向
+    const probe = await fetch(src, { method: 'GET', headers: { 'Range': 'bytes=0-0' }, signal: controller.signal, redirect: 'manual' });
     clearTimeout(timeoutId);
     probeStatus = probe.status;
     probeType = probe.headers.get('content-type') || '';
     probeSize = probe.headers.get('content-length') || probe.headers.get('content-range') || '';
     // 读完 1 字节关闭流, 不浪费带宽
     try { await probe.arrayBuffer(); } catch (e) {}
+    // Bug 1+2 修复: 检测网关重定向 (302 → 登录页)
+    if (probe.status >= 300 && probe.status < 400) {
+      toast(`播放失败: 网关要求鉴权 (HTTP ${probe.status}), 请先登录 fnOS`, 'error', 8000);
+      console.error('[openPlayer] gateway redirect', probe.status, '→', probe.headers.get('location') || 'unknown');
+      return;
+    }
+    // Bug 1+2 修复: 检测 Content-Type 是否视频/音频类型
+    if (probe.status === 200 || probe.status === 206) {
+      const isVideoType = probeType.startsWith('video/') || probeType.startsWith('audio/');
+      if (!isVideoType) {
+        toast(`播放失败: 服务器返回了 ${probeType} (期望视频/音频), 请检查文件或网关配置`, 'error', 8000);
+        console.error('[openPlayer] invalid Content-Type:', probeType, 'for', src);
+        return;
+      }
+    }
     if (probe.status === 401) {
       toast(`播放失败: 网关鉴权被拒 (HTTP 401). 详情请查看浏览器控制台.`, 'error', 6000);
       console.error('[openPlayer] HTTP 401 from', src, '— missing X-Trim-Userid? fnOS gateway injects this on regular page navigation but may not on direct <video src> requests.');
