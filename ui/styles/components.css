@@ -1263,3 +1263,70 @@ html[data-theme='light'] .toast.info {
 .player-body { padding:0; background:#000; display:flex; align-items:center; justify-content:center; min-height:60vh; }
 .player-video { width:100%; max-height:80vh; outline:none; }
 .player-info { font-size:0.85rem; color:var(--text-dim); }
+
+/* ===== Player Dialog (Plan 01) ===== */
+.player-dialog {
+  width: 90vw;
+  height: 90vh;
+  max-width: 90vw;
+  max-height: 90vh;
+  padding: 0;
+  border: none;
+  background: #000;
+  color: #fff;
+  position: fixed;
+  top: 5vh;
+  left: 5vw;
+  margin: 0;
+}
+.player-dialog::backdrop {
+  background: rgba(0,0,0,0.85);
+}
+.player-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: rgba(20,20,20,0.95);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.player-dialog-title {
+  font-size: 14px;
+  color: rgba(255,255,255,0.7);
+}
+.player-dialog-close-btn {
+  padding: 6px 16px;
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.player-dialog-close-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+.player-dialog-video-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  min-height: 0;
+}
+.player-dialog-video {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  outline: none;
+  display: block;
+}
+.player-dialog-info {
+  padding: 6px 16px;
+  background: rgba(20,20,20,0.95);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  text-align: center;
+}

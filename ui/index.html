@@ -935,6 +935,7 @@
             <summary>查看 info.txt</summary>
             <pre id="tdInfoContent" class="info-pre" style="max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-size:12px;line-height:1.4;margin-top:4px">(加载中...)</pre>
           </details>
+        </div>
         <div class="form-group">
           <label class="form-label">📈 下载速度曲线 (v0.6.0)</label>
           <canvas id="tdSpeedChart" class="chart-canvas" width="600" height="140" style="width:100%;max-height:140px;background:var(--bg-card);border-radius:var(--radius-sm)"></canvas>
@@ -947,8 +948,8 @@
       <button class="btn btn-ghost" id="tdCopyCmdBtn">📋 复制命令</button>
       <button class="btn btn-ghost" id="tdSubtitleBtn">📝 字幕</button>
       <button class="btn btn-primary" id="tdAISummaryBtn">🧠 AI 总结</button>
-      <button class="btn btn-ghost" onclick="hideModal('taskDetailModal')">关闭</button>
-      <button class="btn btn-danger" onclick="try{deleteTask(_currentDetailTaskId);hideModal('taskDetailModal')}catch(e){console.error(e)}">🗑 删除</button>
+      <button class="btn btn-ghost" id="tdCloseBtn">关闭</button>
+      <button class="btn btn-danger" id="tdDeleteBtn">🗑 删除</button>
     </div>
   </div>
 </div>
@@ -983,39 +984,20 @@
 
 <!-- Video Player Modal -->
 <!-- 原生 <dialog> 元素 (Bug 1+2 修复: 绕过 fnOS WebView modal 渲染 bug) -->
-<dialog id="playerDialog" style="width:90vw;height:90vh;max-width:90vw;max-height:90vh;padding:0;border:none;background:#000;color:#fff;position:fixed;top:5vh;left:5vw;margin:0">
+<dialog id="playerDialog" class="player-dialog">
   <div style="display:flex;flex-direction:column;width:100%;height:100%">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:rgba(20,20,20,0.95);border-bottom:1px solid rgba(255,255,255,0.1)">
-      <span id="playerDialogTitle" style="font-size:14px;color:rgba(255,255,255,0.7)">▶ 加载中...</span>
-      <button id="playerDialogCloseBtn" style="padding:6px 16px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:6px;cursor:pointer;font-size:13px">关闭</button>
+    <div class="player-dialog-header">
+      <span id="playerDialogTitle" class="player-dialog-title">▶ 加载中...</span>
+      <button id="playerDialogCloseBtn" class="player-dialog-close-btn">关闭</button>
     </div>
-    <div style="flex:1;display:flex;align-items:center;justify-content:center;background:#000;min-height:0">
-      <video id="playerDialogVideo" controls autoplay playsinline preload="auto" style="max-width:100%;max-height:100%;width:auto;height:auto;outline:none">您的浏览器不支持视频播放</video>
+    <div class="player-dialog-video-wrapper">
+      <video id="playerDialogVideo" class="player-dialog-video" controls autoplay playsinline preload="auto">您的浏览器不支持视频播放</video>
     </div>
-    <div id="playerDialogInfo" style="padding:6px 16px;background:rgba(20,20,20,0.95);border-top:1px solid rgba(255,255,255,0.1);font-size:11px;color:rgba(255,255,255,0.5);text-align:center">fnytdlp 视频播放器</div>
+    <div id="playerDialogInfo" class="player-dialog-info">fnytdlp 视频播放器</div>
   </div>
 </dialog>
-<style>dialog::backdrop { background: rgba(0,0,0,0.85); }</style>
 
-<div class="modal-overlay" id="playerModal" onclick="if(event.target===this)closePlayer()">
-  <div class="modal modal-fullscreen">
-    <div class="modal-header">
-      <h2 class="modal-title">▶ 视频播放</h2>
-      <div class="modal-header-actions">
-        <button class="btn-icon" onclick="closePlayer()">✕</button>
-      </div>
-    </div>
-    <div class="modal-body player-body">
-      <video id="playerVideo" class="player-video" controls autoplay preload="auto" playsinline>
-        您的浏览器不支持视频播放
-      </video>
-    </div>
-    <div class="modal-footer">
-      <span id="playerInfo" class="player-info"></span>
-      <button class="btn btn-ghost" onclick="closePlayer()">关闭</button>
-    </div>
-  </div>
-</div>
+
 
 <!-- Toast Container -->
 <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true" role="status"></div>

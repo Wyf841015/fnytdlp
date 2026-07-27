@@ -2444,6 +2444,15 @@ function showTaskDetail(id) {
   if (_aiBtn) _aiBtn.onclick = (e) => { e.preventDefault(); startAISummaryUI(id); return false; };
   const _subtitleBtn = $('tdSubtitleBtn');
   if (_subtitleBtn) _subtitleBtn.onclick = (e) => { e.preventDefault(); viewTaskSubtitle(id); return false; };
+  const _closeBtn = $('tdCloseBtn');
+  if (_closeBtn) _closeBtn.onclick = (e) => { e.preventDefault(); hideModal('taskDetailModal'); return false; };
+  const _deleteBtn = $('tdDeleteBtn');
+  if (_deleteBtn) _deleteBtn.onclick = (e) => {
+    e.preventDefault();
+    deleteTask(id);
+    hideModal('taskDetailModal');
+    return false;
+  };
 }
 window.showTaskDetail = showTaskDetail;
 
@@ -2688,10 +2697,10 @@ const openPlayer = async (id) => {
     dlg.innerHTML = '<div style="display:flex;flex-direction:column;width:100%;height:100%">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:rgba(20,20,20,0.95);border-bottom:1px solid rgba(255,255,255,0.1)">'
       + '<span id="playerDialogTitle" style="font-size:14px;color:rgba(255,255,255,0.7)">▶ 加载中...</span>'
-      + '<button id="playerDialogCloseBtn" style="padding:6px 16px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:6px;cursor:pointer;font-size:13px">关闭</button>'
+      + '<button id="playerDialogCloseBtn" class="player-dialog-close-btn">关闭</button>'
       + '</div>'
       + '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:#000;min-height:0">'
-      + '<video id="playerDialogVideo" controls autoplay playsinline preload="auto" style="max-width:100%;max-height:100%;width:auto;height:auto;outline:none">您的浏览器不支持视频播放</video>'
+      + '<video id="playerDialogVideo" controls autoplay playsinline preload="auto" class="player-dialog-video">您的浏览器不支持视频播放</video>'
       + '</div>'
       + '<div id="playerDialogInfo" style="padding:6px 16px;background:rgba(20,20,20,0.95);border-top:1px solid rgba(255,255,255,0.1);font-size:11px;color:rgba(255,255,255,0.5);text-align:center">fnytdlp 视频播放器</div>'
       + '</div>';
