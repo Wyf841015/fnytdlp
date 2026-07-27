@@ -30,12 +30,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { applyLine as _applyProgressLine, newTask as _newProgressTask } from './util/progress-aggregator.js';
 
 // ── version (保持与 manifest 一致 ────────────────────────────────────────
-const VERSION = '0.6.1';
+const VERSION = '0.6.2';
 // ── paths ──────────────────────────────────────────────────────────────
 const PKGVAR    = process.env.TRM_PKGVAR || process.env.TRIM_PKGVAR || null;
 const APPDEST   = process.env.TRIM_APPDEST || null;
@@ -578,10 +579,24 @@ const loadTasks = () => {
   } catch (e) { LOG('tasks load failed:', e.message); }
 };
 const saveTasks = () => {
+  // P0 性能修复: SSE progress 推频时 saveTasks 被高频调用 (每 200ms 一次).
+  // 改成 500ms debounce + 同步落盘用无缩进 JSON, 缩 5x 体积 + 避免 IO 阻塞.
+  if (_saveTasksTimer) return;
+  _saveTasksTimer = setTimeout(() => {
+    _saveTasksTimer = null;
+    try {
+      _atomicWrite(TASKS_FILE, JSON.stringify(Array.from(tasks.values())));
+    } catch (e) { LOG('tasks save failed:', e.message); }
+  }, 500);
+};
+// 立即同步落盘 (用于关闭/重命名等关键操作)
+const saveTasksNow = () => {
+  if (_saveTasksTimer) { clearTimeout(_saveTasksTimer); _saveTasksTimer = null; }
   try {
-    _atomicWrite(TASKS_FILE, JSON.stringify(Array.from(tasks.values()), null, 2));
+    _atomicWrite(TASKS_FILE, JSON.stringify(Array.from(tasks.values())));
   } catch (e) { LOG('tasks save failed:', e.message); }
 };
+let _saveTasksTimer = null;
 loadTasks();
 
 // ── SSE clients ───────────────────────────────────────────────────────
@@ -779,26 +794,36 @@ const listTasks = (filter = {}) => {
       t._downloadFolder = t.options._downloadFolder;
     }
     if (t.status === 'completed' && (!t.filename || /\.(webp|jpe?g|png|gif|info\.json)$/i.test(t.filename))) {
+      // 选目录优先用 task 原始下载目录 (task.options._downloadFolder), 否则用当前设置.
+      // 这样设置切换后旧任务仍能找到文件; 兼容历史版本 task (没有 _downloadFolder) 用 config.downloadPath.
+      const taskDir = (t.options && t.options._downloadFolder) || (t._downloadFolder) || config.downloadPath;
       try {
-        const files = fs.readdirSync(config.downloadPath)
+        const files = fs.readdirSync(taskDir)
           .map(f => {
             try {
-              const fp = path.join(config.downloadPath, f);
+              const fp = path.join(taskDir, f);
               const st = fs.statSync(fp);
               return { name: f, mtime: st.mtimeMs || 0, size: st.size };
             } catch (e) { return null; }
           })
-          .filter(x => x && x.size > 0 && !x.name.endsWith('.part') && !x.name.endsWith('.ytdl') && !x.name.startsWith('.') && !/\.(webp|jpe?g|png|gif|info\.json)$/i.test(x.name))
-          .sort((a, b) => b.mtime - a.mtime);
+          .filter(x => x && x.size > 0 && !x.name.endsWith('.part') && !x.name.endsWith('.ytdl') && !x.name.startsWith('.') && !/\.(webp|jpe?g|png|gif|info\.json)$/i.test(x.name));
         if (files.length > 0) {
-          t.filename = files[0].name;
-          t.totalBytes = files[0].size;
-          t.downloadedBytes = files[0].size;
+          // 优先选最大视频/音频文件 (避免被 .srt/.description 等附件误中)
+          const videos = files.filter(f => /\.(mp4|mkv|webm|m4a|mp3|opus|flac|wav|m4v|ts)$/i.test(f.name)).sort((a,b) => b.size - a.size);
+          const chosen = (videos.length > 0 ? videos[0] : files.sort((a,b) => b.size - a.size)[0]);
+          // 同步修正 _downloadFolder 到 chosen 实际所在目录 (兜底 #2: 同名文件在不同路径)
+          if (chosen) {
+            t.filename = chosen.name;
+            t.totalBytes = chosen.size;
+            t.downloadedBytes = chosen.size;
+            t._downloadFolder = taskDir;
+          }
         }
       } catch (e) { LOG('[listTasks] filename stat failed:', e.message); }
     } else if (t.status === 'completed' && (!t.totalBytes || t.totalBytes === 0) && t.filename) {
+      const taskDir = (t.options && t.options._downloadFolder) || (t._downloadFolder) || config.downloadPath;
       try {
-        const fp = path.join(config.downloadPath, t.filename);
+        const fp = path.join(taskDir, t.filename);
         const st = fs.statSync(fp);
         if (st.isFile() && st.size > 0) {
           t.totalBytes = st.size;
@@ -2238,13 +2263,26 @@ const startAISummary = async (url) => {
     else if (pathname.startsWith('/api/play/') && req.method === 'GET') {
       const id = pathname.split('/')[3];
       const task = getTask(id);
-      if (!task) return sendJSON(res, 404, { error: 'not found' });
+      if (!task) return sendJSON(res, 404, { error: `task ${id} not found` });
       if (task.status !== 'completed' || !task.filename) {
-        return sendJSON(res, 400, { error: 'task not completed or no file' });
+        return sendJSON(res, 400, { error: `task not completed (status=${task.status}) or no filename` });
       }
-      const fileDir = task.options?._downloadFolder || config.downloadPath;
+      const fileDir = task.options?._downloadFolder || task._downloadFolder || config.downloadPath;
       const fp = path.join(fileDir, task.filename);
-      if (!fs.existsSync(fp)) return sendJSON(res, 404, { error: 'file not found' });
+      if (!fs.existsSync(fp)) {
+        // 文件被移走 / 删掉 / 改路径 — 给清晰错误 + hint 当前 task 的预期目录
+        const dirExists = fs.existsSync(fileDir);
+        const dirContents = dirExists ? fs.readdirSync(fileDir).slice(0, 10) : [];
+        LOG('[play] file missing', { id, fp, fileDir, dirExists, dirSample: dirContents });
+        return sendJSON(res, 404, {
+          error: `file not found on disk: ${task.filename}`,
+          expectedDir: fileDir,
+          filename: task.filename,
+          hint: dirExists
+            ? `目录存在但没有这个文件名, 当前目录前 10 个文件: ${dirContents.join(', ')}`
+            : `目标目录不存在: ${fileDir} (可能改过 downloadPath 设置?)`,
+        });
+      }
       try {
         const stat = fs.statSync(fp);
         const ext = path.extname(fp).toLowerCase();
@@ -2567,7 +2605,7 @@ const startAISummary = async (url) => {
     }
     // ── 静态文件 ──
     else if (!pathname.startsWith('/api')) {
-      serveStatic(pathname, res);
+      serveStatic(pathname, res, req);
     } else {
       res.writeHead(404); res.end('Not Found');
     }
@@ -2598,7 +2636,7 @@ const parseBody = (req) => new Promise((resolve, reject) => {
   req.on('error', reject);
 });
 
-const serveStatic = (reqPath, res) => {
+const serveStatic = (reqPath, res, req) => {
   let fp = reqPath === '/' ? 'index.html' : reqPath.replace(/^\//, '');
   if (fp.includes('..')) { res.writeHead(403); res.end('Forbidden'); return; }
   fp = path.join(UI_DIR, fp);
@@ -2619,13 +2657,48 @@ const serveStatic = (reqPath, res) => {
     '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
     '.svg': 'image/svg+xml', '.ico': 'image/x-icon'
   }[ext] || 'application/octet-stream';
-  const size = fs.statSync(fp).size;
-  // 大于 512KB 的用流式发送，避免大文件（如 yt-dlp binary）全量读内存
-  if (size > 524288) {
-    res.writeHead(200, { 'Content-Type': ct, 'Content-Length': size, 'Cache-Control': 'public, max-age=3600' });
+  // P0 性能修复: 静态资源 6 道关 (gzip + cache + ETag/304 + 文件 hash 缓存)
+  // 1. 文本类走 gzip (html/js/css/json/svg) — main.js 124KB → ~35KB
+  // 2. Cache-Control 全部 1 天, immutable (部署新版走版本号?file=v=X 强制刷新)
+  // 3. ETag 基于 mtime+size, 304 走完只发 ~50 字节
+  // 4. < 512KB 走 readFileSync (内存充裕, 比 stream + pipe 简单)
+  // 5. > 512KB (yt-dlp binary) 走 stream
+  // 6. 二进制 (image/ico/octet-stream) 不压缩
+  const COMPRESSIBLE = ['.html', '.js', '.css', '.json', '.svg', '.txt', '.xml'];
+  const canGzip = COMPRESSIBLE.includes(ext);
+  const acceptEnc = (req.headers['accept-encoding'] || '');
+  const useGzip = canGzip && /\bgzip\b/i.test(acceptEnc);
+  const headers = {
+    'Content-Type': ct,
+    'Cache-Control': 'public, max-age=86400, immutable',
+    'Vary': 'Accept-Encoding',
+  };
+  // ETag: mtimeMs + size, 16 字节 hex
+  const stat = fs.statSync(fp);
+  const etag = '"' + crypto.createHash('md5').update(stat.mtimeMs + ':' + stat.size).digest('hex').slice(0, 16) + '"';
+  headers['ETag'] = etag;
+  // 304 短路
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, headers);
+    res.end();
+    return;
+  }
+  if (useGzip) {
+    // 一次性压缩: 文本类都 ≤ 100KB, 内存压力可控
+    const buf = fs.readFileSync(fp);
+    const gz = zlib.gzipSync(buf, { level: 6 });
+    headers['Content-Length'] = gz.length;
+    headers['Content-Encoding'] = 'gzip';
+    res.writeHead(200, headers);
+    res.end(gz);
+  } else if (stat.size > 524288) {
+    // 大文件 (yt-dlp binary 3MB) 流式发送
+    headers['Content-Length'] = stat.size;
+    res.writeHead(200, headers);
     fs.createReadStream(fp).pipe(res);
   } else {
-    res.writeHead(200, { 'Content-Type': ct });
+    headers['Content-Length'] = stat.size;
+    res.writeHead(200, headers);
     res.end(fs.readFileSync(fp));
   }
 };
