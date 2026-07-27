@@ -2730,28 +2730,21 @@ const openPlayer = async (id) => {
   }
   title.textContent = '▶ ' + (t.title || t.filename || 'video');
   const src = API._url(`/api/play/${encodeURIComponent(id)}`);
-  info.textContent = '来源: ' + src;
-  video.onerror = () => {
-    const err = video.error;
-    const names = { 1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED' };
-    const name = names[err?.code] || `CODE_${err?.code}`;
-    info.textContent = '❌ 错误: ' + name + ' | URL: ' + src;
-    console.error('[openPlayer] <video> error', err, 'src=', src);
-  };
-  // 边下载边播放: 直接设置 video.src, 浏览器用 Range 请求渐进式播放
-  // 不再用 fetch→blob URL (大文件会全部下载到内存才播放)
-  // 绕过 fnOS 网关: /api/play/:id 在 SPA 页面内 fetch 携带 cookie, 但 <video src>
-  // 直接请求会被网关拦截。使用当前页面 URL 构造同源请求
   info.textContent = '⏳ 加载中... (边下载边播放)';
-  video.src = src;
-  video.load();
-  video.onerror = () => {
+  // 边下载边播放: handler 先绑再设 src, 避免竞争
+  video.onerror = null;
+  video.onloadeddata = null;
+  // 第二个 onerror: 带 fallback (覆盖第一个)
+  let _fallbackTried = false;
+  video.onerror = (e) => {
     const err = video.error;
     const names = { 1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED' };
     const name = names[err?.code] || `CODE_${err?.code}`;
-    if (err?.code === 4) {
+    console.error('[openPlayer] <video> error', err, 'src=', src);
+    if (err?.code === 4 && !_fallbackTried) {
+      _fallbackTried = true;
       info.textContent = '❌ 视频格式不支持, 尝试用 blob URL 加载...';
-      // fallback: fetch→blob URL (兼容旧版 fnOS WebView)
+      // fallback: fetch→blob URL (兼容旧版 fnOS WebView 网关拦截)
       fetch(src, { credentials: 'same-origin' }).then(r => r.blob()).then(blob => {
         video.src = URL.createObjectURL(blob);
         video.load();
@@ -2762,14 +2755,17 @@ const openPlayer = async (id) => {
     } else {
       info.textContent = '❌ 错误: ' + name + ' | ' + src;
     }
-    console.error('[openPlayer] <video> error', err, 'src=', src);
   };
   video.onloadeddata = () => {
-    info.textContent = `▶ 正在播放 (${(t.downloadedBytes || 0) > 0 ? (Math.min(t.downloadedBytes, video.buffered?.length > 0 ? video.buffered.end(video.buffered.length-1) : 0)/1024/1024).toFixed(1) : '?'} MB 已下载)`;
+    const buffered = video.buffered?.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
+    const downloaded = t.downloadedBytes || 0;
+    info.textContent = `▶ 正在播放 (${(Math.max(buffered, downloaded) / 1024 / 1024).toFixed(1)} MB 已缓冲)`;
     if (t.status === 'downloading') {
       info.textContent += ' · ⏬ 下载中, 可拖动进度条等缓冲';
     }
   };
+  video.src = src;
+  video.load();
   // HTML5 原生 <dialog>.showModal() - 浏览器自带 modal, 绕过所有 CSS 渲染 bug
   try {
     if (typeof dlg.showModal === 'function') {
