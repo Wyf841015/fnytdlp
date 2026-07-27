@@ -1310,10 +1310,15 @@ const startTask = (id) => {
           if (st.isFile() && st.size > 0) {
             task.totalBytes = st.size;
             task.downloadedBytes = st.size;
+          } else {
+            LOG('[yt-dlp close] file stat failed, filename=', task.filename);
           }
-        } catch (e) { LOG('[yt-dlp close] statSync failed:', e.message); }
+        } catch (e) { LOG('[yt-dlp close] stat error:', task.filename, e.message); }
+      } else {
+        // Bug 1+2 修复: 找不到文件时兜底, 防止前端 canPlay 永远 false
+        task.filename = task.filename || '';
+        LOG('[yt-dlp close] no filename found for task', task.id, 'status=', task.status);
       }
-      // 异步获取元数据 (title/duration/thumbnail)
       if (!task.title) {
         execFile(YT_DLP_BIN, ['--dump-json', '--no-download', '--no-warnings', task.url], { timeout: 10000 }, (err, stdout) => {
           if (!err) try {
