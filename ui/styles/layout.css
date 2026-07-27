@@ -448,6 +448,13 @@ input, textarea, .search-input, .tab-search-input {
   z-index: 2;
 }
 
+/* Bug 3 修复: 输入框聚焦时禁用 header backdrop-filter */
+body.input-focused .header {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: var(--bg-card) !important;
+}
+
 @media (max-width: 768px) {
   .search-input { font-size: 16px; }
 }

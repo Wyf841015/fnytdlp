@@ -2934,6 +2934,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // P0 修复: fnOS WebView inline onclick 失效 (见 rewireInlineOnclick 函数)
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
   rewireInlineOnclick();
+  // Bug 3 修复: 输入框聚焦时禁用 header backdrop-filter, 防止键盘弹出时白色遮罩
+  document.addEventListener('focusin', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      document.body.classList.add('input-focused');
+    }
+  });
+  document.addEventListener('focusout', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      document.body.classList.remove('input-focused');
+    }
+  });
   // load initial
   await loadTasks();
   // poll every 30s as fallback (SSE 主, 轮询备)
