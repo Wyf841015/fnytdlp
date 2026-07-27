@@ -455,6 +455,12 @@ body.input-focused .header {
   background: var(--bg-card) !important;
 }
 
+/* Bug 3 修复: 输入框聚焦时也禁用 modal-overlay backdrop-filter (fnOS app WebView) */
+body.input-focused .modal-overlay {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 @media (max-width: 768px) {
   .search-input { font-size: 16px; }
 }

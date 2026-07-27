@@ -2942,16 +2942,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
   rewireInlineOnclick();
   // Bug 3 修复: 输入框聚焦时禁用 header backdrop-filter, 防止键盘弹出时白色遮罩
-  document.addEventListener('focusin', (e) => {
+  // 用 focus + capture 而非 focusin, 兼容 fnOS WebView 事件模型
+  const _inputFocusHandler = (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
       document.body.classList.add('input-focused');
     }
-  });
-  document.addEventListener('focusout', (e) => {
+  };
+  const _inputBlurHandler = (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
       document.body.classList.remove('input-focused');
     }
-  });
+  };
+  document.addEventListener('focus', _inputFocusHandler, true);
+  document.addEventListener('blur', _inputBlurHandler, true);
   // load initial
   await loadTasks();
   // poll every 30s as fallback (SSE 主, 轮询备)
