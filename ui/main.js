@@ -2667,15 +2667,32 @@ const openPlayer = async (id) => {
     return;
   }
   // Bug 1+2 修复: 用 HTML5 原生 <dialog> 元素弹出播放器
-  // fnOS WebView (CEF) 对自定义 modal 渲染有 bug, 但原生 <dialog> 是浏览器自带
-  const dlg = $('playerDialog');
-  const video = $('playerDialogVideo');
-  const title = $('playerDialogTitle');
-  const info = $('playerDialogInfo');
+  // 动态创建 <dialog> 元素, 避免依赖 index.html 中是否预先存在
+  // (fnOS 客户端可能缓存旧版 index.html, 动态创建保证跨版本兼容)
+  let dlg = $('playerDialog');
+  let video = $('playerDialogVideo');
+  let title = $('playerDialogTitle');
+  let info = $('playerDialogInfo');
   if (!dlg || !video || !title || !info) {
-    toast('播放器未加载, 请刷新页面', 'error', 5000);
-    console.error('[openPlayer] dialog elements missing', { dlg, video, title, info });
-    return;
+    console.warn('[openPlayer] dialog elements missing, creating dynamically');
+    dlg = document.createElement('dialog');
+    dlg.id = 'playerDialog';
+    dlg.style.cssText = 'width:90vw;height:90vh;max-width:90vw;max-height:90vh;padding:0;border:none;background:#000;color:#fff;position:fixed;top:5vh;left:5vw;margin:0';
+    dlg.innerHTML = '<div style="display:flex;flex-direction:column;width:100%;height:100%">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:rgba(20,20,20,0.95);border-bottom:1px solid rgba(255,255,255,0.1)">'
+      + '<span id="playerDialogTitle" style="font-size:14px;color:rgba(255,255,255,0.7)">▶ 加载中...</span>'
+      + '<button onclick="closePlayer()" style="padding:6px 16px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:6px;cursor:pointer;font-size:13px">关闭</button>'
+      + '</div>'
+      + '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:#000;min-height:0">'
+      + '<video id="playerDialogVideo" controls autoplay playsinline preload="auto" style="max-width:100%;max-height:100%;width:auto;height:auto;outline:none">您的浏览器不支持视频播放</video>'
+      + '</div>'
+      + '<div id="playerDialogInfo" style="padding:6px 16px;background:rgba(20,20,20,0.95);border-top:1px solid rgba(255,255,255,0.1);font-size:11px;color:rgba(255,255,255,0.5);text-align:center">fnytdlp 视频播放器</div>'
+      + '</div>';
+    document.body.appendChild(dlg);
+    video = $('playerDialogVideo');
+    title = $('playerDialogTitle');
+    info = $('playerDialogInfo');
+    console.log('[openPlayer] dialog dynamically created');
   }
   title.textContent = '▶ ' + (t.title || t.filename || 'video');
   const src = API._url(`/api/play/${encodeURIComponent(id)}`);
