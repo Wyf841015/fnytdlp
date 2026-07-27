@@ -3009,38 +3009,44 @@ document.addEventListener('DOMContentLoaded', async () => {
   // P0 修复: fnOS WebView inline onclick 失效 (见 rewireInlineOnclick 函数)
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
   rewireInlineOnclick();
-  // Bug 1+2 修复: 用事件委托绑定 task-list 内部按钮 (data-action)
-  // 替代 inline onclick (fnOS WebView 下 inline onclick + rewireInlineOnclick 都不稳定)
+  // Bug 1+2 修复: 用 DOM 0 级事件 + 事件委托绑定 task-list 内部按钮
+  // fnOS WebView 下 addEventListener 不可靠, 用 element.onclick = fn 直接绑
   const _taskListEl = $('taskList');
   if (_taskListEl && !_taskListEl._taskListDelegated) {
-    _taskListEl.addEventListener('click', (e) => {
+    _taskListEl.onclick = (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       const action = btn.getAttribute('data-action');
       const id = btn.getAttribute('data-id');
       e.preventDefault();
       e.stopPropagation();
+      console.log('[taskList] click action=', action, 'id=', id);
       switch (action) {
         case 'retry': window.retryTask?.(id); break;
         case 'stop': window.stopTask?.(id); break;
         case 'play': window.openPlayer?.(id); break;
         case 'delete': window.deleteTask?.(id); break;
       }
-    });
+    };
     _taskListEl._taskListDelegated = true;
   }
   // Bug 1+2 修复: 任务项整列点击事件委托 (data-task-detail)
   if (_taskListEl && !_taskListEl._taskItemDelegated) {
-    _taskListEl.addEventListener('click', (e) => {
+    // 复用一个 onclick: 先检查 data-action, 否则检查 data-task-detail
+    const origOnClick = _taskListEl.onclick;
+    _taskListEl.onclick = (e) => {
+      // 先调原有 onclick (data-action)
+      if (origOnClick) origOnClick(e);
+      // 如果已处理 (action 按钮), 不触发详情
       const item = e.target.closest('[data-task-detail]');
       if (!item) return;
-      // 如果点击的是 task-actions 内部按钮, 不触发详情弹窗 (避免与 action 冲突)
       if (e.target.closest('.task-actions')) return;
-      // 如果点击的是 checkbox, 不触发详情弹窗
       if (e.target.closest('.task-checkbox')) return;
+      // 如果默认事件被阻止, 跳过
+      if (e.defaultPrevented) return;
       const id = item.getAttribute('data-task-detail');
       window.showTaskDetail?.(id);
-    });
+    };
     _taskListEl._taskItemDelegated = true;
   }
   // Bug 3 修复: 输入框聚焦时禁用 header backdrop-filter, 防止键盘弹出时白色遮罩
