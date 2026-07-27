@@ -2437,6 +2437,13 @@ function showTaskDetail(id) {
   }
   // v0.6.0: 渲染下载速度曲线
   renderSpeedChart(t);
+  // 直接绑详情弹窗按钮, 避免 rewireInlineOnclick 把变量名当字符串
+  const _copyBtn = $('tdCopyCmdBtn');
+  if (_copyBtn) _copyBtn.onclick = (e) => { e.preventDefault(); copyYtDlpCmd(id); return false; };
+  const _aiBtn = $('tdAISummaryBtn');
+  if (_aiBtn) _aiBtn.onclick = (e) => { e.preventDefault(); startAISummaryUI(id); return false; };
+  const _subtitleBtn = $('tdSubtitleBtn');
+  if (_subtitleBtn) _subtitleBtn.onclick = (e) => { e.preventDefault(); viewTaskSubtitle(id); return false; };
 }
 window.showTaskDetail = showTaskDetail;
 

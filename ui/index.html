@@ -944,9 +944,9 @@
     </div>
     <div class="modal-footer">
       <a class="btn btn-secondary" id="tdPlayBtn" href="#" style="display:none" target="_blank" rel="noopener noreferrer">▶ 播放</a>
-      <button class="btn btn-ghost" onclick="copyYtDlpCmd(_currentDetailTaskId)">📋 复制命令</button>
-      <button class="btn btn-ghost" onclick="viewTaskSubtitle(_currentDetailTaskId)">📝 字幕</button>
-      <button class="btn btn-primary" onclick="startAISummaryUI(_currentDetailTaskId)">🧠 AI 总结</button>
+      <button class="btn btn-ghost" id="tdCopyCmdBtn">📋 复制命令</button>
+      <button class="btn btn-ghost" id="tdSubtitleBtn">📝 字幕</button>
+      <button class="btn btn-primary" id="tdAISummaryBtn">🧠 AI 总结</button>
       <button class="btn btn-ghost" onclick="hideModal('taskDetailModal')">关闭</button>
       <button class="btn btn-danger" onclick="try{deleteTask(_currentDetailTaskId);hideModal('taskDetailModal')}catch(e){console.error(e)}">🗑 删除</button>
     </div>

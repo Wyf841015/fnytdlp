@@ -887,9 +887,9 @@ describe('v0.6.0 字幕提取', () => {
     assert.match(mainSrc, /const viewTaskSubtitle = async \(id\) =>/);
   });
   it('详情 modal 字幕按钮', () => {
-    const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
-    assert.match(html, /onclick="viewTaskSubtitle\(_currentDetailTaskId\)"/);
-  });
+      const html = fs.readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+      assert.match(html, /tdSubtitleBtn/);
+    });
 });
 
 describe('v0.6.0 AI 视频总结', () => {
@@ -935,7 +935,7 @@ describe('v0.6.0 AI 视频总结', () => {
     assert.match(html, /data-aitab="keypoints"/);
     assert.match(html, /data-aitab="mindmap"/);
   });
-  it('HTML AI 总结按钮 (任务详情)', () => assert.match(html, /onclick="startAISummaryUI\(_currentDetailTaskId\)"/));
+  it('HTML AI 总结按钮 (任务详情)', () => assert.match(html, /tdAISummaryBtn/));
 
   const mainSrc = fs.readFileSync(new URL('../ui/main.js', import.meta.url), 'utf8');
   it('前端 startAISummaryUI 函数', () => assert.match(mainSrc, /const startAISummaryUI = async \(taskId\) =>/));
