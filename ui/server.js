@@ -2374,8 +2374,9 @@ const startAISummary = async (url) => {
       const id = pathname.split('/')[3];
       const task = getTask(id);
       if (!task) return sendJSON(res, 404, { error: `task ${id} not found` });
-      if (task.status !== 'completed') {
-        return sendJSON(res, 400, { error: `task not completed (status=${task.status})` });
+      // 边下载边播放: 允许 downloading/processing 任务播放部分文件
+      if (task.status !== 'completed' && task.status !== 'downloading' && task.status !== 'processing') {
+        return sendJSON(res, 400, { error: `task not playable (status=${task.status})` });
       }
       const fileDir = task.options?._downloadFolder || task._downloadFolder || config.downloadPath;
       // Bug 1+2 修复: 如果 task.filename 不存在, 扫描目录找最新文件
@@ -2399,18 +2400,30 @@ const startAISummary = async (url) => {
       }
       const fp = path.join(fileDir, filename);
       if (!fs.existsSync(fp)) {
-        // 文件被移走 / 删掉 / 改路径 — 给清晰错误 + hint 当前 task 的预期目录
-        const dirExists = fs.existsSync(fileDir);
-        const dirContents = dirExists ? fs.readdirSync(fileDir).slice(0, 10) : [];
-        LOG('[play] file missing', { id, fp, fileDir, dirExists, dirSample: dirContents });
-        return sendJSON(res, 404, {
-          error: `file not found on disk: ${task.filename}`,
-          expectedDir: fileDir,
-          filename: task.filename,
-          hint: dirExists
-            ? `目录存在但没有这个文件名, 当前目录前 10 个文件: ${dirContents.join(', ')}`
-            : `目标目录不存在: ${fileDir} (可能改过 downloadPath 设置?)`,
-        });
+        // 尝试找 .part 文件 (yt-dlp 下载中临时文件)
+        const partFp = fp + '.part';
+        if (fs.existsSync(partFp)) {
+          LOG('[play] using .part file for downloading task:', partFp);
+          const _fp = fp;
+          fp = partFp;
+          // 用原始文件名做 Content-Disposition, 但流式读取 .part 内容
+          // 注意: .part 文件在 yt-dlp 完成下载后会被删除
+          // 但如果用户重新打开播放器, 此时主文件可能已完成
+          // 所以先检查主文件, 不存在才 fallback 到 .part
+        } else {
+          // 文件被移走 / 删掉 / 改路径 — 给清晰错误 + hint
+          const dirExists = fs.existsSync(fileDir);
+          const dirContents = dirExists ? fs.readdirSync(fileDir).slice(0, 10) : [];
+          LOG('[play] file missing', { id, fp, fileDir, dirExists, dirSample: dirContents });
+          return sendJSON(res, 404, {
+            error: `file not found on disk: ${task.filename}`,
+            expectedDir: fileDir,
+            filename: task.filename,
+            hint: dirExists
+              ? `目录存在但没有这个文件名, 当前目录前 10 个文件: ${dirContents.join(', ')}`
+              : `目标目录不存在: ${fileDir} (可能改过 downloadPath 设置?)`,
+          });
+        }
       }
       try {
         const stat = fs.statSync(fp);
@@ -2433,6 +2446,7 @@ const startAISummary = async (url) => {
             'Content-Length': chunkSize,
             'Content-Type': ct,
             'Cache-Control': 'no-cache',
+            'Content-Disposition': 'inline',
           });
           const stream = fs.createReadStream(fp, { start, end });
           stream.pipe(res);
@@ -2442,6 +2456,7 @@ const startAISummary = async (url) => {
             'Content-Length': stat.size,
             'Accept-Ranges': 'bytes',
             'Cache-Control': 'no-cache',
+            'Content-Disposition': 'inline',
           });
           fs.createReadStream(fp).pipe(res);
         }
