@@ -736,7 +736,7 @@ const renderTask = (t) => {
   const title = t.filename || t.url;
   const showActions = t.status === 'error' || t.status === 'stopped' || t.status === 'paused';
   const canStop = t.status === 'downloading' || t.status === 'pending' || t.status === 'processing';
-  const canPlay = t.status === 'completed' && t.filename;
+  const canPlay = t.status === 'completed';  // Bug 1+2 修复: 不检查 t.filename, 让后端 /api/play/:id 决定能否播放
   // M-8: 已用时间 (用 t.createdAt 计算, downloading/processing 状态时显示)
   const isActive = t.status === 'downloading' || t.status === 'processing';
   let elapsed = '';
@@ -2428,7 +2428,8 @@ function showTaskDetail(id) {
   // 已完成的任务显示播放按钮
   const playBtn = $('tdPlayBtn');
   if (playBtn) {
-    playBtn.style.display = (t.status === 'completed' && t.filename) ? '' : 'none';
+    // Bug 1+2 修复: 已完成任务就显示播放按钮, 让后端 /api/play/:id 决定能否播放
+    playBtn.style.display = (t.status === 'completed') ? '' : 'none';
   }
   // v0.6.0: 渲染下载速度曲线
   renderSpeedChart(t);
@@ -2656,7 +2657,8 @@ const MEDIA_ERROR_NAMES = {
 };
 const openPlayer = async (id) => {
   const t = tasks.find(x => x.id === id);
-  if (!t || t.status !== 'completed' || !t.filename) { toast('无可播放的文件', 'warn'); return; }
+  if (!t || t.status !== 'completed') { toast('无可播放的文件', 'warn'); return; }
+  // Bug 1+2 修复: 不检查 t.filename, 让后端 /api/play/:id 决定能否播放
   const video = $('playerVideo');
   const info = $('playerInfo');
   if (!video || !info) return;

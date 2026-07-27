@@ -1315,9 +1315,8 @@ const startTask = (id) => {
           }
         } catch (e) { LOG('[yt-dlp close] stat error:', task.filename, e.message); }
       } else {
-        // Bug 1+2 修复: 找不到文件时兜底, 防止前端 canPlay 永远 false
-        task.filename = task.filename || '';
-        LOG('[yt-dlp close] no filename found for task', task.id, 'status=', task.status);
+        // Bug 1+2 修复: 找不到文件时保持 filename 原始值 (不要设为 '' 破坏 canPlay 条件)
+        LOG('[yt-dlp close] no filename found for task', task.id, 'status=', task.status, 'existing filename=', task.filename);
       }
       if (!task.title) {
         execFile(YT_DLP_BIN, ['--dump-json', '--no-download', '--no-warnings', task.url], { timeout: 10000 }, (err, stdout) => {
@@ -2375,11 +2374,30 @@ const startAISummary = async (url) => {
       const id = pathname.split('/')[3];
       const task = getTask(id);
       if (!task) return sendJSON(res, 404, { error: `task ${id} not found` });
-      if (task.status !== 'completed' || !task.filename) {
-        return sendJSON(res, 400, { error: `task not completed (status=${task.status}) or no filename` });
+      if (task.status !== 'completed') {
+        return sendJSON(res, 400, { error: `task not completed (status=${task.status})` });
       }
       const fileDir = task.options?._downloadFolder || task._downloadFolder || config.downloadPath;
-      const fp = path.join(fileDir, task.filename);
+      // Bug 1+2 修复: 如果 task.filename 不存在, 扫描目录找最新文件
+      let filename = task.filename;
+      if (!filename && fs.existsSync(fileDir)) {
+        try {
+          const files = fs.readdirSync(fileDir)
+            .map(n => ({ name: n, stat: fs.statSync(path.join(fileDir, n)) }))
+            .filter(f => f.stat.isFile() && /\.(mp4|mkv|webm|m4a|mp3|opus|flac|wav|ts)$/i.test(f.name))
+            .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
+          if (files.length > 0) {
+            filename = files[0].name;
+            // 补回 task.filename 供后续使用
+            task.filename = filename;
+            LOG('[play] found file via scan:', filename);
+          }
+        } catch (e) { LOG('[play] scan dir failed:', e.message); }
+      }
+      if (!filename) {
+        return sendJSON(res, 404, { error: 'no playable file found in download directory' });
+      }
+      const fp = path.join(fileDir, filename);
       if (!fs.existsSync(fp)) {
         // 文件被移走 / 删掉 / 改路径 — 给清晰错误 + hint 当前 task 的预期目录
         const dirExists = fs.existsSync(fileDir);

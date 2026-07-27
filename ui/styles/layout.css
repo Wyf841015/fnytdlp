@@ -442,6 +442,12 @@
   .search-input { font-size: 16px; }
 }
 
+/* Bug 3 修复: 输入框添加 z-index 防止 backdrop-filter 在键盘弹出时产生白色遮罩 */
+input, textarea, .search-input, .tab-search-input {
+  position: relative;
+  z-index: 2;
+}
+
 @media (max-width: 768px) {
   .search-input { font-size: 16px; }
 }
