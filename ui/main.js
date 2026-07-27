@@ -765,7 +765,7 @@ const renderTask = (t) => {
         <div class="task-actions" onclick="event.stopPropagation()" data-no-rewire>
           ${showActions ? `<button class="btn-icon-sm" title="重试" data-action="retry" data-id="${esc(t.id)}">🔄</button>` : ''}
           ${canStop ? `<button class="btn-icon-sm" title="停止" data-action="stop" data-id="${esc(t.id)}">⏹</button>` : ''}
-          ${canPlay ? `<a class="btn-icon-sm" title="播放" data-no-rewire href="${API._url('/player.html')}?id=${encodeURIComponent(t.id)}&t=${encodeURIComponent(t.title || t.filename || t.id)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();return true">▶</a>` : ''}
+          ${canPlay ? `<a class="btn-icon-sm" title="下载/播放" data-no-rewire href="${API._url(`/api/play/${encodeURIComponent(t.id)}`)}" download="${esc(t.filename || (t.title + '.mp4'))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();return true">▶</a>` : ''}
           <button class="btn-icon-sm" title="删除" data-action="delete" data-id="${esc(t.id)}">🗑</button>
         </div>
       </div>
@@ -2433,7 +2433,7 @@ function showTaskDetail(id) {
     playBtn.style.display = (t.status === 'completed') ? '' : 'none';
     // 用 <a target="_blank" href="player.html?id=X"> 直接打开新窗口
     // 不用 JS 拦截, fnOS WebView 对原生 <a target="_blank"> 支持最好
-    playBtn.href = `${API._url('/player.html')}?id=${encodeURIComponent(id)}&t=${encodeURIComponent(t.title || t.filename || id)}`;
+    playBtn.href = API._url(`/api/play/${encodeURIComponent(id)}`); playBtn.download = t.filename || (t.title + '.mp4');
   }
   // v0.6.0: 渲染下载速度曲线
   renderSpeedChart(t);
@@ -2668,7 +2668,7 @@ const openPlayer = async (id) => {
   }
   // Bug 1+2 修复: 用新窗口打开独立 player.html, 绕过 fnOS WebView 模态框渲染 bug
   // modal 渲染层在某些 WebView 上不绘制 (CEF 已知问题)
-  const playUrl = `${API._url('/player.html')}?id=${encodeURIComponent(id)}&t=${encodeURIComponent(t.title || t.filename || id)}`;
+  const playUrl = API._url(`/api/play/${encodeURIComponent(id)}`);
   console.log('[openPlayer] opening new window:', playUrl);
   const newWin = window.open(playUrl, '_blank');
   if (!newWin) {
