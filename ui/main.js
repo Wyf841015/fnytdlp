@@ -2948,6 +2948,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // P0 修复: fnOS WebView inline onclick 失效 (见 rewireInlineOnclick 函数)
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
   rewireInlineOnclick();
+  // Bug 3 修复: 静态 dialog 关闭按钮直接绑 onclick, 避免 rewireInlineOnclick 依赖
+  const _closeBtn = $('playerDialogCloseBtn');
+  if (_closeBtn) _closeBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); closePlayer(); return false; };
   // Bug 1+2 修复: 用 DOM 0 级事件 + 事件委托绑定 task-list 内部按钮
   // fnOS WebView 下 addEventListener 不可靠, 用 element.onclick = fn 直接绑
   const _taskListEl = $('taskList');
