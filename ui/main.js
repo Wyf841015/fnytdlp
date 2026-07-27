@@ -751,7 +751,7 @@ const renderTask = (t) => {
   const checkbox = `<label class="task-checkbox" onclick="event.stopPropagation()"><input type="checkbox" data-id="${esc(t.id)}" ${isSelected ? 'checked' : ''} onchange="toggleBatchSelection('${esc(t.id)}', this.checked)"><span class="checkbox-mark"></span></label>`;
 
   return `
-    <div class="task-item ${isSelected ? 'selected' : ''}" data-id="${esc(t.id)}" role="button" tabindex="0" aria-label="任务: ${esc(t.title || title)}" onclick="showTaskDetail('${esc(t.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showTaskDetail('${esc(t.id)}')}">
+    <div class="task-item ${isSelected ? 'selected' : ''}" data-id="${esc(t.id)}" role="button" tabindex="0" aria-label="任务: ${esc(t.title || title)}" data-task-detail="${esc(t.id)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showTaskDetail('${esc(t.id)}')}" data-no-rewire>
       <div class="task-row task-row-1">
         ${checkbox}
         <div class="task-info-block">
@@ -762,11 +762,11 @@ const renderTask = (t) => {
           </div>
           <div class="task-url-sub" title="${esc(t.url)}">${esc(t.url)}</div>
         </div>
-        <div class="task-actions" onclick="event.stopPropagation()">
-          ${showActions ? `<button class="btn-icon-sm" title="重试" onclick="retryTask('${esc(t.id)}')">🔄</button>` : ''}
-          ${canStop ? `<button class="btn-icon-sm" title="停止" onclick="stopTask('${esc(t.id)}')">⏹</button>` : ''}
-          ${canPlay ? `<button class="btn-icon-sm" title="播放" onclick="openPlayer('${esc(t.id)}')">▶</button>` : ''}
-          <button class="btn-icon-sm" title="删除" onclick="deleteTask('${esc(t.id)}')">🗑</button>
+        <div class="task-actions" onclick="event.stopPropagation()" data-no-rewire>
+          ${showActions ? `<button class="btn-icon-sm" title="重试" data-action="retry" data-id="${esc(t.id)}">🔄</button>` : ''}
+          ${canStop ? `<button class="btn-icon-sm" title="停止" data-action="stop" data-id="${esc(t.id)}">⏹</button>` : ''}
+          ${canPlay ? `<button class="btn-icon-sm" title="播放" data-action="play" data-id="${esc(t.id)}">▶</button>` : ''}
+          <button class="btn-icon-sm" title="删除" data-action="delete" data-id="${esc(t.id)}">🗑</button>
         </div>
       </div>
       ${isActive ? `
@@ -794,9 +794,10 @@ const renderTask = (t) => {
 // 抽出为函数, 供 init() 首次劫持 + renderTasks() 每次重渲后对 #taskList
 // 内部新元素重新劫持 (native onclick attribute 在 fnOS WebView / 多数 CEF
 // 环境下不触发, 必须 addEventListener)
+// 但 task-list 内部用 data-action 委托, 不需要劫持
 const rewireInlineOnclick = (root) => {
   const scope = root || document;
-  scope.querySelectorAll('[onclick]:not(#settingsBtn)').forEach(el => {
+  scope.querySelectorAll('[onclick]:not(#settingsBtn):not([data-no-rewire])').forEach(el => {
     // P0-3 性能修复: 跳过已劫持的元素 (el._fnytdlpWired 标记)
     // 全表 8 按钮/任务 × 50 任务 = 400 次 new Function 构造, 每次重渲都跑
     // 改为幂等: 已劫持的 element 跳过 removeAttribute/addEventListener
@@ -3008,6 +3009,40 @@ document.addEventListener('DOMContentLoaded', async () => {
   // P0 修复: fnOS WebView inline onclick 失效 (见 rewireInlineOnclick 函数)
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
   rewireInlineOnclick();
+  // Bug 1+2 修复: 用事件委托绑定 task-list 内部按钮 (data-action)
+  // 替代 inline onclick (fnOS WebView 下 inline onclick + rewireInlineOnclick 都不稳定)
+  const _taskListEl = $('taskList');
+  if (_taskListEl && !_taskListEl._taskListDelegated) {
+    _taskListEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.getAttribute('data-action');
+      const id = btn.getAttribute('data-id');
+      e.preventDefault();
+      e.stopPropagation();
+      switch (action) {
+        case 'retry': window.retryTask?.(id); break;
+        case 'stop': window.stopTask?.(id); break;
+        case 'play': window.openPlayer?.(id); break;
+        case 'delete': window.deleteTask?.(id); break;
+      }
+    });
+    _taskListEl._taskListDelegated = true;
+  }
+  // Bug 1+2 修复: 任务项整列点击事件委托 (data-task-detail)
+  if (_taskListEl && !_taskListEl._taskItemDelegated) {
+    _taskListEl.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-task-detail]');
+      if (!item) return;
+      // 如果点击的是 task-actions 内部按钮, 不触发详情弹窗 (避免与 action 冲突)
+      if (e.target.closest('.task-actions')) return;
+      // 如果点击的是 checkbox, 不触发详情弹窗
+      if (e.target.closest('.task-checkbox')) return;
+      const id = item.getAttribute('data-task-detail');
+      window.showTaskDetail?.(id);
+    });
+    _taskListEl._taskItemDelegated = true;
+  }
   // Bug 3 修复: 输入框聚焦时禁用 header backdrop-filter, 防止键盘弹出时白色遮罩
   // 用 focus + capture 而非 focusin, 兼容 fnOS WebView 事件模型
   const _inputFocusHandler = (e) => {
