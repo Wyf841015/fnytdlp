@@ -2657,7 +2657,11 @@ const MEDIA_ERROR_NAMES = {
 };
 const openPlayer = async (id) => {
   const t = tasks.find(x => x.id === id);
-  if (!t || t.status !== 'completed') { toast('无可播放的文件', 'warn'); return; }
+  console.log('[openPlayer] called id=', id, 'task=', t ? t.id : 'NOT_FOUND', 'status=', t?.status, 'filename=', t?.filename);
+  if (!t || t.status !== 'completed') {
+    toast(`无可播放的文件 (状态: ${t?.status || '不存在'})`, 'warn');
+    return;
+  }
   // Bug 1+2 修复: 确保播放器 DOM 存在 (fnOS WebView 可能找不到 HTML 元素)
   let playerModal = $('playerModal');
   if (!playerModal) {
@@ -2695,12 +2699,11 @@ const openPlayer = async (id) => {
       return;
     }
   }
-  // 先显示播放器 modal, 直接操作样式绕过 CSS 类系统
-  playerModal.style.display = 'flex';
-  playerModal.style.opacity = '1';
-  playerModal.style.pointerEvents = 'auto';
-  // 确保 z-index 高于所有元素
-  playerModal.style.zIndex = '9999';
+  // Bug 1+2 修复: 强行显示播放器 modal, 绕过所有 showModal/CSS 类系统
+  // fnOS WebView 下 showModal() 不工作, 改用 inline style
+  playerModal.style.cssText = 'display:flex !important; opacity:1 !important; pointer-events:auto !important; z-index:99999 !important;';
+  // 直接显示"正在加载"提示 (用 alert 作为 fallback, 兼容 toast 容器缺失)
+  console.log('[openPlayer] modal shown, loading video...');
   toast('正在加载视频...', 'info', 2000);
   // 通过 /api/play/:id 流式加载视频
   const src = API._url(`/api/play/${id}`);
