@@ -2658,10 +2658,36 @@ const MEDIA_ERROR_NAMES = {
 const openPlayer = async (id) => {
   const t = tasks.find(x => x.id === id);
   if (!t || t.status !== 'completed') { toast('无可播放的文件', 'warn'); return; }
-  // Bug 1+2 修复: 不检查 t.filename, 让后端 /api/play/:id 决定能否播放
-  const video = $('playerVideo');
-  const info = $('playerInfo');
-  if (!video || !info) return;
+  let video = $('playerVideo');
+  let info = $('playerInfo');
+  // Bug 1+2 修复: 如果播放器元素不存在, 动态创建 (兼容某些 WebView 加载顺序)
+  if (!video || !info) {
+    console.warn('[openPlayer] playerVideo/playerInfo not found, creating dynamically');
+    toast('播放器初始化中...', 'info', 3000);
+    // 尝试创建播放器 modal
+    const playerModal = $('playerModal');
+    if (playerModal) {
+      // 如果 modal 存在但内部元素缺失, 重建内部
+      const body = playerModal.querySelector('.modal-body');
+      const footer = playerModal.querySelector('.modal-footer');
+      if (body) {
+        body.innerHTML = '<video id="playerVideo" class="player-video" controls autoplay preload="auto" playsinline>您的浏览器不支持视频播放</video>';
+      }
+      if (footer) {
+        const infoSpan = document.createElement('span');
+        infoSpan.id = 'playerInfo';
+        infoSpan.className = 'player-info';
+        footer.prepend(infoSpan);
+      }
+      video = $('playerVideo');
+      info = $('playerInfo');
+    }
+    if (!video || !info) {
+      console.error('[openPlayer] cannot create player elements');
+      toast('播放器初始化失败', 'error', 5000);
+      return;
+    }
+  }
   // 先显示播放器 modal, 让用户看到界面, 再异步加载视频
   showModal('playerModal');
   toast('正在加载视频...', 'info', 2000);
