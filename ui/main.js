@@ -2662,17 +2662,24 @@ const openPlayer = async (id) => {
   const video = $('playerVideo');
   const info = $('playerInfo');
   if (!video || !info) return;
+  // 先显示播放器 modal, 让用户看到界面, 再异步加载视频
+  showModal('playerModal');
+  toast('正在加载视频...', 'info', 2000);
   // 通过 /api/play/:id 流式加载视频
   const src = API._url(`/api/play/${id}`);
 
   // 探测可达性 + 拿到 content-type/size. 用 Range 仅取 1 字节避免下载整个视频.
   // 这一步给"为什么不能播"的诊断信息，也避免 <video> silent error 让用户什么都不知道.
+  // Bug 1+2 修复: 加 AbortSignal 5s 超时防止 fetch hang
   let probeStatus = 0;
   let probeType = '';
   let probeSize = '';
   let probeError = '';
   try {
-    const probe = await fetch(src, { method: 'GET', headers: { 'Range': 'bytes=0-0' } });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const probe = await fetch(src, { method: 'GET', headers: { 'Range': 'bytes=0-0' }, signal: controller.signal });
+    clearTimeout(timeoutId);
     probeStatus = probe.status;
     probeType = probe.headers.get('content-type') || '';
     probeSize = probe.headers.get('content-length') || probe.headers.get('content-range') || '';
