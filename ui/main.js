@@ -2681,7 +2681,7 @@ const openPlayer = async (id) => {
     dlg.innerHTML = '<div style="display:flex;flex-direction:column;width:100%;height:100%">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:rgba(20,20,20,0.95);border-bottom:1px solid rgba(255,255,255,0.1)">'
       + '<span id="playerDialogTitle" style="font-size:14px;color:rgba(255,255,255,0.7)">▶ 加载中...</span>'
-      + '<button onclick="closePlayer()" style="padding:6px 16px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:6px;cursor:pointer;font-size:13px">关闭</button>'
+      + '<button id="playerDialogCloseBtn" style="padding:6px 16px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:6px;cursor:pointer;font-size:13px">关闭</button>'
       + '</div>'
       + '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:#000;min-height:0">'
       + '<video id="playerDialogVideo" controls autoplay playsinline preload="auto" style="max-width:100%;max-height:100%;width:auto;height:auto;outline:none">您的浏览器不支持视频播放</video>'
@@ -2692,6 +2692,9 @@ const openPlayer = async (id) => {
     video = $('playerDialogVideo');
     title = $('playerDialogTitle');
     info = $('playerDialogInfo');
+    // 直接绑 onclick, 不依赖 rewireInlineOnclick (任务栏触发动态创建后 inline onclick 失效)
+    const innerCloseBtn = $('playerDialogCloseBtn');
+    if (innerCloseBtn) innerCloseBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); closePlayer(); return false; };
     console.log('[openPlayer] dialog dynamically created');
   }
   title.textContent = '▶ ' + (t.title || t.filename || 'video');
