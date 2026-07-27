@@ -2712,10 +2712,16 @@ const openPlayer = async (id) => {
     }
   }
   // Bug 1+2 修复: 强行显示播放器 modal, 绕过所有 showModal/CSS 类系统
-  // fnOS WebView 下 showModal() 不工作, 改用 inline style
-  playerModal.style.cssText = 'display:flex !important; opacity:1 !important; pointer-events:auto !important; z-index:99999 !important;';
-  // 直接显示"正在加载"提示 (用 alert 作为 fallback, 兼容 toast 容器缺失)
-  console.log('[openPlayer] modal shown, loading video...');
+  // fnOS WebView 下 getComputedStyle 报告 flex 但视觉仍隐藏 (CEF 已知 bug)
+  // 用 inline style + 强制 visibility + 红边框作为调试信号
+  playerModal.removeAttribute('class');  // 先清空所有 class 避免 CSS 干扰
+  playerModal.setAttribute('class', 'modal-overlay modal-visible');  // 加显式可见 class
+  playerModal.style.cssText = 'display:flex !important; opacity:1 !important; pointer-events:auto !important; z-index:99999 !important; visibility:visible !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; background:rgba(0,0,0,0.85) !important; align-items:center !important; justify-content:center !important;';
+  // 直接强制 video 元素可见
+  if (video) {
+    video.style.cssText = 'display:block !important; width:80vw !important; max-width:1200px !important; height:auto !important; min-height:60vh !important; background:#000 !important; visibility:visible !important;';
+  }
+  console.log('[openPlayer] modal forced visible, computed display:', getComputedStyle(playerModal).display, 'classList:', playerModal.className);
   toast('正在加载视频...', 'info', 2000);
   // 通过 /api/play/:id 流式加载视频
   const src = API._url(`/api/play/${id}`);
