@@ -316,21 +316,51 @@ LOG('detected arch=' + ARCH + ' (process.arch=' + process.arch + ')');
 const _thumbnailCache = new Map();
 const THUMB_CACHE_MAX = 200;
 const THUMB_CACHE_TTL = 24 * 3600 * 1000; // 24h
+// P2-2 性能修复: 加 50MB 字节上限 (原只有 200 条 LRU, 缩略图 200KB 各 = 40MB 内存涨)
+const THUMB_CACHE_MAX_BYTES = 50 * 1024 * 1024;  // 50MB
+let _thumbnailCacheBytes = 0;
+// 满时优先删最大条目 (节约字节)
+const _evictLargestThumbnail = () => {
+  let largestKey = null;
+  let largestSize = 0;
+  for (const [k, v] of _thumbnailCache) {
+    if (v.buffer && v.buffer.length > largestSize) {
+      largestSize = v.buffer.length;
+      largestKey = k;
+    }
+  }
+  if (largestKey) {
+    const e = _thumbnailCache.get(largestKey);
+    if (e) _thumbnailCacheBytes -= (e.buffer ? e.buffer.length : 0);
+    _thumbnailCache.delete(largestKey);
+  }
+};
 const getThumbnailCache = (url) => {
   const entry = _thumbnailCache.get(url);
   if (!entry) return null;
   if (Date.now() - entry.cachedAt > THUMB_CACHE_TTL) {
+    _thumbnailCacheBytes -= (entry.buffer ? entry.buffer.length : 0);
     _thumbnailCache.delete(url);
     return null;
   }
   return entry;
 };
 const setThumbnailCache = (url, contentType, buffer) => {
-  if (_thumbnailCache.size >= THUMB_CACHE_MAX) {
+  const size = buffer ? buffer.length : 0;
+  // 字节超限: 先按"最大优先"驱逐, 直到能塞下
+  while (_thumbnailCacheBytes + size > THUMB_CACHE_MAX_BYTES && _thumbnailCache.size > 0) {
+    _evictLargestThumbnail();
+  }
+  // 条数超限: FIFO 删最老
+  while (_thumbnailCache.size >= THUMB_CACHE_MAX) {
     const oldest = _thumbnailCache.keys().next().value;
-    if (oldest) _thumbnailCache.delete(oldest);
+    if (!oldest) break;
+    const e = _thumbnailCache.get(oldest);
+    if (e) _thumbnailCacheBytes -= (e.buffer ? e.buffer.length : 0);
+    _thumbnailCache.delete(oldest);
   }
   _thumbnailCache.set(url, { contentType, buffer, cachedAt: Date.now() });
+  _thumbnailCacheBytes += size;
 };
 
 // ── 订阅检查 ─────────────────────────────────────────────────
@@ -653,7 +683,9 @@ const _sseFlushTimer = setInterval(() => {
 const _sseTaskUpdated = new Map();
 const _flushSSE = (event, data) => {
   try {
-    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    // P2-1 性能优化: data 已经是字符串就直接用 (避免重复 JSON.stringify)
+    const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
+    const msg = `event: ${event}\ndata: ${dataStr}\n\n`;
     for (const client of _sseClients) {
       try { client.write(msg); } catch (e) {
         _sseClients.delete(client);
@@ -2530,6 +2562,7 @@ const startAISummary = async (url) => {
     // ── 缩略图缓存 ──
     else if (pathname === '/api/thumbnail-cache/clear' && req.method === 'POST') {
       _thumbnailCache.clear();
+      _thumbnailCacheBytes = 0;
       sendJSON(res, 200, { ok: true, cleared: true });
     }
     // ── 错误指导 (前端离线分类) ──
