@@ -601,13 +601,46 @@ loadTasks();
 
 // ── SSE clients ───────────────────────────────────────────────────────
 const _sseClients = new Set();
-const broadcast = (event, data) => {
-  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const client of _sseClients) {
-    try { client.write(msg); } catch (e) {
-      _sseClients.delete(client);
-    }
+// P0-2 性能修复: 250ms 节流同 taskId 的 progress 事件
+// 原来 broadcast 每次直接 JSON.stringify + write, 高频 PROGRESS 行 (200ms) 时
+// 每秒序列化 + 推送 5 次同一 task, 客户端每次 scheduleRender 都是空跑.
+const _sseThrottle = new Map();  // taskId -> { lastSent, data }
+const _ssePending = new Map();   // taskId -> data (待发送的最近一次)
+const _sseFlushTimer = setInterval(() => {
+  // 每 250ms flush 一次待发送的 progress 事件
+  for (const [taskId, data] of _ssePending) {
+    _flushSSE('task-progress', data);
+    _ssePending.delete(taskId);
   }
+  for (const [taskId, data] of _sseTaskUpdated) {
+    _flushSSE('task-updated', data);
+    _sseTaskUpdated.delete(taskId);
+  }
+}, 250);
+const _sseTaskUpdated = new Map();
+const _flushSSE = (event, data) => {
+  try {
+    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const client of _sseClients) {
+      try { client.write(msg); } catch (e) {
+        _sseClients.delete(client);
+      }
+    }
+  } catch (e) { /* 数据序列化失败, 跳过本次 */ }
+};
+const broadcast = (event, data) => {
+  // P0-2 节流: 同一 taskId 的 progress 事件合并为每 250ms 一次
+  if (event === 'task-progress' && data && data.id) {
+    _ssePending.set(data.id, data);
+    return;
+  }
+  if (event === 'task-updated' && data && data.id) {
+    // task-updated 结构性变化, 节流但确保最终必发送
+    _sseTaskUpdated.set(data.id, data);
+    return;
+  }
+  // 其他事件 (task-created/task-deleted) 立即发
+  _flushSSE(event, data);
 };
 const handleSSE = (req, res) => {
   res.writeHead(200, {
@@ -2746,16 +2779,27 @@ const main = () => {
   // shutdown
   const shutdown = () => {
     LOG('shutting down');
+    // P0-5 配套: 关闭前先 flush 任何待落盘的任务 (debounce 版的 saveTasks 有 500ms 延迟)
+    if (typeof saveTasksNow === 'function') saveTasksNow();
+    if (typeof saveConfigNow === 'function') saveConfigNow();
+    // 关闭前 flush SSE 节流队列 (确保 status 切换等最后事件不丢)
+    for (const [taskId, data] of _ssePending) {
+      _flushSSE('task-progress', data);
+    }
+    _ssePending.clear();
+    for (const [taskId, data] of _sseTaskUpdated) {
+      _flushSSE('task-updated', data);
+    }
+    _sseTaskUpdated.clear();
     for (const [id, proc] of _procs) {
       try { proc.kill('SIGTERM'); } catch (e) {}
     }
     try { sockServer.close(); } catch (e) {}
     try { httpServer.close(); } catch (e) {}
-    saveTasks();
     process.exit(0);
   };
-  process.on('SIGTERM', () => { clearInterval(_subTimer); shutdown(); });
-  process.on('SIGINT', () => { clearInterval(_subTimer); shutdown(); });
+  process.on('SIGTERM', () => { clearInterval(_subTimer); clearInterval(_sseFlushTimer); shutdown(); });
+  process.on('SIGINT', () => { clearInterval(_subTimer); clearInterval(_sseFlushTimer); shutdown(); });
   // 订阅定时检查 (每 5 分钟)
   const _subTimer = setInterval(() => {
     checkSubscriptions().then(results => {
