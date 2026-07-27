@@ -236,7 +236,19 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 
 ### v0.6.2 (2026-07-27)
 
-版本号升级，bug 修复和小优化。
+**UI/UX 全面优化 (依赖 ui-ux-pro-max 审计)**
+
+- **清理死代码** — 删除废弃的 `playerModal` (20 行死 HTML)
+- **播放器样式归一化** — `playerDialog` inline 样式迁移到 `components.css` CSS 类
+- **HTML 修复** — 详情弹窗 `info-value` div 未闭合嵌套断裂
+- **按钮绑定修复** — 关闭/删除按钮改用 DOM 0 onclick 传正确 `id` 变量
+- **z-index 层级系统** — `tokens.css` 新增 `--z-sticky/--z-modal/--z-dialog/--z-toast/--z-max`
+- **按钮 loading 状态** — `setLoading()` 辅助函数 + `.btn-loading` 防重复提交
+- **任务列表骨架屏** — `.skeleton` / `.skeleton-card` CSS 动画
+- **表单标签** — 搜索/设置输入框补 `<label>` (`.sr-only` 屏幕阅读器)
+- **aria-label 补充** — 任务列表播放/重试/停止/删除按钮
+- **基础字号** — 14px→16px 提升可读性
+- 测试 279/279 全过
 
 ### v0.6.1 (2026-07-21)
 
