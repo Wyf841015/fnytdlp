@@ -2430,6 +2430,17 @@ function showTaskDetail(id) {
   if (playBtn) {
     // Bug 1+2 修复: 已完成任务就显示播放按钮, 让后端 /api/play/:id 决定能否播放
     playBtn.style.display = (t.status === 'completed') ? '' : 'none';
+    // 改用 addEventListener 绑 onclick, 避免 inline onclick 解析变量名失败
+    // 之前 onclick="openPlayer(_currentDetailTaskId)" 在 fnOS WebView 下
+    // 被 rewireInlineOnclick 当成 openPlayer('_currentDetailTaskId') 字符串调用
+    if (!playBtn._playBtnBound) {
+      playBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openPlayer(_currentDetailTaskId);
+      });
+      playBtn._playBtnBound = true;
+    }
   }
   // v0.6.0: 渲染下载速度曲线
   renderSpeedChart(t);
