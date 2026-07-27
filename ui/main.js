@@ -2695,8 +2695,12 @@ const openPlayer = async (id) => {
       return;
     }
   }
-  // 先显示播放器 modal, 让用户看到界面, 再异步加载视频
-  showModal('playerModal');
+  // 先显示播放器 modal, 直接操作样式绕过 CSS 类系统
+  playerModal.style.display = 'flex';
+  playerModal.style.opacity = '1';
+  playerModal.style.pointerEvents = 'auto';
+  // 确保 z-index 高于所有元素
+  playerModal.style.zIndex = '9999';
   toast('正在加载视频...', 'info', 2000);
   // 通过 /api/play/:id 流式加载视频
   const src = API._url(`/api/play/${id}`);
