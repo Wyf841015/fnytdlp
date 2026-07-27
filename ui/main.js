@@ -765,7 +765,7 @@ const renderTask = (t) => {
         <div class="task-actions" onclick="event.stopPropagation()" data-no-rewire>
           ${showActions ? `<button class="btn-icon-sm" title="重试" data-action="retry" data-id="${esc(t.id)}">🔄</button>` : ''}
           ${canStop ? `<button class="btn-icon-sm" title="停止" data-action="stop" data-id="${esc(t.id)}">⏹</button>` : ''}
-          ${canPlay ? `<button class="btn-icon-sm" title="播放" data-action="play" data-id="${esc(t.id)}">▶</button>` : ''}
+          ${canPlay ? `<a class="btn-icon-sm" title="播放" data-no-rewire href="${API._url('/player.html')}?id=${encodeURIComponent(t.id)}&t=${encodeURIComponent(t.title || t.filename || t.id)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();return true">▶</a>` : ''}
           <button class="btn-icon-sm" title="删除" data-action="delete" data-id="${esc(t.id)}">🗑</button>
         </div>
       </div>
@@ -2431,17 +2431,9 @@ function showTaskDetail(id) {
   if (playBtn) {
     // Bug 1+2 修复: 已完成任务就显示播放按钮, 让后端 /api/play/:id 决定能否播放
     playBtn.style.display = (t.status === 'completed') ? '' : 'none';
-    // 改用 addEventListener 绑 onclick, 避免 inline onclick 解析变量名失败
-    // 之前 onclick="openPlayer(_currentDetailTaskId)" 在 fnOS WebView 下
-    // 被 rewireInlineOnclick 当成 openPlayer('_currentDetailTaskId') 字符串调用
-    if (!playBtn._playBtnBound) {
-      playBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openPlayer(_currentDetailTaskId);
-      });
-      playBtn._playBtnBound = true;
-    }
+    // 用 <a target="_blank" href="player.html?id=X"> 直接打开新窗口
+    // 不用 JS 拦截, fnOS WebView 对原生 <a target="_blank"> 支持最好
+    playBtn.href = `${API._url('/player.html')}?id=${encodeURIComponent(id)}&t=${encodeURIComponent(t.title || t.filename || id)}`;
   }
   // v0.6.0: 渲染下载速度曲线
   renderSpeedChart(t);
