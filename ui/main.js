@@ -609,6 +609,9 @@ const renderTasks = () => {
   } else {
     $('emptyState').style.display = 'none';
     list.innerHTML = filtered.map(renderTask).join('');
+    // P0 修复: 任务列表重渲后, 重新劫持新生成 task-action 按钮的 inline onclick
+    // (fnOS WebView / CEF 不响应 native onclick attribute, 必须 addEventListener)
+    rewireInlineOnclick(list);
   }
   // Tabs counts
   $('countAll').textContent = tasks.length;
@@ -732,6 +735,53 @@ const renderTask = (t) => {
     </div>
   `;
 };
+
+// ── inline onclick rewire (P0 修复: fnOS WebView 不响应 native onclick) ──
+// 抽出为函数, 供 init() 首次劫持 + renderTasks() 每次重渲后对 #taskList
+// 内部新元素重新劫持 (native onclick attribute 在 fnOS WebView / 多数 CEF
+// 环境下不触发, 必须 addEventListener)
+const rewireInlineOnclick = (root) => {
+  const scope = root || document;
+  scope.querySelectorAll('[onclick]:not(#settingsBtn)').forEach(el => {
+    const attr = el.getAttribute('onclick');
+    if (!attr) return;
+    el.removeAttribute('onclick');
+    el.addEventListener('click', function(e) {
+      try {
+        // 如果含 event 引用 (modal overlay), 用 new Function + try-catch
+        if (attr.includes('event.target')) {
+          new Function('event', attr).call(this, e);
+          return;
+        }
+        // 否则直接 window[fnName](...args) — 无 eval
+        const m = attr.match(/^([a-zA-Z_]\w*)\((.*)\)$/);
+        if (m && typeof window[m[1]] === 'function') {
+          const raw = m[2].trim();
+          if (raw) {
+            // 支持单引号参数 (如 'sponsorModal', 't_xxx')
+            const args = raw.split(',').map(function(s) {
+              s = s.trim();
+              if (s === 'this') return this; // 实际 DOM 元素
+              if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1);
+              if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
+              // 数字/布尔/对象
+              try { return JSON.parse(s); } catch (e) { return s; }
+            }, this); // <-- 把 this (当前元素) 传给 map 的 thisArg
+            window[m[1]](...args);
+          } else {
+            window[m[1]]();
+          }
+        } else {
+          // 兜底
+          new Function('event', attr).call(this, e);
+        }
+      } catch(err) {
+        console.error('[fnytdlp] onclick err:', attr, err);
+      }
+    });
+  });
+};
+window.rewireInlineOnclick = rewireInlineOnclick;
 
 const updateKpi = () => {
   const active = tasks.filter(t => t.status === 'downloading' || t.status === 'pending' || t.status === 'processing').length;
@@ -2541,7 +2591,10 @@ const copyAIMarkdown = async () => {
 window.copyAIMarkdown = copyAIMarkdown;
 
 // ── 视频播放器 ──────────────────────────────────────────────
-const openPlayer = (id) => {
+const MEDIA_ERROR_NAMES = {
+  1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED',
+};
+const openPlayer = async (id) => {
   const t = tasks.find(x => x.id === id);
   if (!t || t.status !== 'completed' || !t.filename) { toast('无可播放的文件', 'warn'); return; }
   const video = $('playerVideo');
@@ -2549,11 +2602,85 @@ const openPlayer = (id) => {
   if (!video || !info) return;
   // 通过 /api/play/:id 流式加载视频
   const src = API._url(`/api/play/${id}`);
+
+  // 探测可达性 + 拿到 content-type/size. 用 Range 仅取 1 字节避免下载整个视频.
+  // 这一步给"为什么不能播"的诊断信息，也避免 <video> silent error 让用户什么都不知道.
+  let probeStatus = 0;
+  let probeType = '';
+  let probeSize = '';
+  let probeError = '';
+  try {
+    const probe = await fetch(src, { method: 'GET', headers: { 'Range': 'bytes=0-0' } });
+    probeStatus = probe.status;
+    probeType = probe.headers.get('content-type') || '';
+    probeSize = probe.headers.get('content-length') || probe.headers.get('content-range') || '';
+    // 读完 1 字节关闭流, 不浪费带宽
+    try { await probe.arrayBuffer(); } catch (e) {}
+    if (probe.status === 401) {
+      toast(`播放失败: 网关鉴权被拒 (HTTP 401). 详情请查看浏览器控制台.`, 'error', 6000);
+      console.error('[openPlayer] HTTP 401 from', src, '— missing X-Trim-Userid? fnOS gateway injects this on regular page navigation but may not on direct <video src> requests.');
+      return;
+    }
+    if (!probe.ok && probe.status !== 206) {
+      let errMsg = `HTTP ${probe.status}`;
+      let errHint = '';
+      try {
+        const j = await probe.json();
+        if (j && j.error) errMsg = j.error;
+        if (j && j.hint) errHint = j.hint;
+        if (j && j.expectedDir) errHint += ` 期望目录: ${j.expectedDir}`;
+      } catch (e) {}
+      toast(`播放失败: ${errMsg}${errHint ? ' · ' + errHint : ''}`, 'error', 8000);
+      probeError = errMsg;
+      console.error('[openPlayer] probe failed:', probe.status, src, errMsg, errHint);
+      return;
+    }
+  } catch (e) {
+    toast(`播放失败: 网络错误 (${e.message || e})`, 'error', 6000);
+    probeError = e.message || String(e);
+    console.error('[openPlayer] probe threw:', e);
+    return;
+  }
+
+  // 一些容器 (mkv / flac / avi) 浏览器原生不支持. 给用户明确提示,
+  // 直接弹下载链接让他们用第三方播放器 (VLC / IINA / 迅雷 / PotPlayer).
+  const UNSUPPORTED_BY_BROWSER = {
+    'video/x-matroska': 'MKV',
+    'audio/flac': 'FLAC 音频',
+    'audio/x-flac': 'FLAC 音频',
+    'video/x-msvideo': 'AVI',
+  };
+  const ext = (t.filename.split('.').pop() || '').toLowerCase();
+  const unsupportedLabel = UNSUPPORTED_BY_BROWSER[probeType] || (['mkv', 'avi', 'flac'].includes(ext) ? ext.toUpperCase() : null);
+  if (unsupportedLabel) {
+    showModal('playerModal');
+    const sizeText = t.totalBytes ? ` · ${formatBytes(t.totalBytes)}` : '';
+    info.textContent = `${esc(t.filename)}${sizeText}  |  浏览器不能直接播放 ${unsupportedLabel}, 已弹出下载链接`;
+    toast(`${unsupportedLabel} 浏览器无法直接播放, 已弹出下载链接. 用 VLC / IINA / PotPlayer 等打开.`, 'warn', 9000);
+    console.warn('[openPlayer] unsupported format', unsupportedLabel, 'filename=', t.filename);
+    // 走原 URL (browser 会下载). 注意: 在 fnOS 网关下可能弹文件保存对话框, 这是用户期望的.
+    window.open(src, '_blank');
+    return;
+  }
+
+  // 监听 <video> 自身的 error 事件 — 之前完全没有, 用户看不到任何 MediaError 详情.
+  video.onerror = () => {
+    const err = video.error;
+    if (!err) return;
+    const name = MEDIA_ERROR_NAMES[err.code] || `CODE_${err.code}`;
+    const url = video.currentSrc || video.src || src;
+    toast(`视频播放失败: ${name} (${url})`, 'error', 8000);
+    console.error('[openPlayer] <video> error', err.code, name, 'src=', url);
+  };
+
   video.src = src;
   video.load();
-  info.textContent = `${esc(t.filename)} · ${t.totalBytes ? formatBytes(t.totalBytes) : ''}`;
+
+  const sizeText = t.totalBytes ? ` · ${formatBytes(t.totalBytes)}` : (probeSize ? ` (Content-Length: ${probeSize})` : '');
+  const folder = t._downloadFolder || (t.options && t.options._downloadFolder) || (typeof window !== 'undefined' && window._config && window._config.downloadPath) || '';
+  info.textContent = `${esc(t.filename)}${sizeText}  |  ${folder ? esc(folder) + '/' : ''}${esc(t.filename)}  |  ${src}`;
   showModal('playerModal');
-  // 自动播放
+  // 自动播放 (静默吞 promise rejection — 真错误已经在上面 onerror 处理)
   video.play().catch(() => {});
 };
 window.openPlayer = openPlayer;
@@ -2742,46 +2869,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       scheduleRender();
     }
   }, 30000);
-  // P0 修复: fnOS WebView inline onclick 失效
+  // P0 修复: fnOS WebView inline onclick 失效 (见 rewireInlineOnclick 函数)
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
-  document.querySelectorAll('[onclick]:not(#settingsBtn)').forEach(el => {
-    const attr = el.getAttribute('onclick');
-    el.removeAttribute('onclick');
-    el.addEventListener('click', function(e) {
-      try {
-        // 如果含 event 引用 (modal overlay), 用 new Function + try-catch
-        if (attr.includes('event.target')) {
-          new Function('event', attr).call(this, e);
-          return;
-        }
-        // 否则直接 window[fnName](...args) — 无 eval
-        const m = attr.match(/^([a-zA-Z_]\w*)\((.*)\)$/);
-        if (m && typeof window[m[1]] === 'function') {
-          const raw = m[2].trim();
-          if (raw) {
-            // 支持单引号参数 (如 'sponsorModal', 't_xxx')
-            const args = raw.split(',').map(function(s) {
-              s = s.trim();
-              if (s === 'this') return this; // 实际 DOM 元素
-              if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
-                return s.slice(1, -1);
-              }
-              // 数字/布尔/对象
-              try { return JSON.parse(s); } catch (e) { return s; }
-            }, this); // <-- 把 this (当前元素) 传给 map 的 thisArg
-            window[m[1]](...args);
-          } else {
-            window[m[1]]();
-          }
-        } else {
-          // 兜底
-          new Function('event', attr).call(this, e);
-        }
-      } catch(err) {
-        console.error('[fnytdlp] onclick err:', attr, err);
-      }
-    });
-  });
+  rewireInlineOnclick();
   // load initial
   await loadTasks();
   // poll every 30s as fallback (SSE 主, 轮询备)
