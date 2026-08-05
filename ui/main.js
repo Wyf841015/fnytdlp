@@ -170,9 +170,21 @@ const toast = (msg, type = 'info', duration = 2400) => {
   el.className = 'toast ' + cssType;
   el.innerHTML = `<span class="toast-icon">${icons[cssType] || 'i'}</span><span class="toast-msg">${esc(msg)}</span>`;
   c.appendChild(el);
-  requestAnimationFrame(() => el.classList.add('show'));
-  setTimeout(() => el.classList.remove('show'), duration);
-  setTimeout(() => el.remove(), duration + 600);
+  // 入口动画: 用 anime.js 滑入, 降级到 CSS
+  if (typeof animateToastIn === 'function') {
+    animateToastIn(el);
+  } else {
+    requestAnimationFrame(() => el.classList.add('show'));
+  }
+  // 出口动画
+  setTimeout(() => {
+    if (typeof animateToastOut === 'function') {
+      animateToastOut(el, () => el.remove());
+    } else {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 600);
+    }
+  }, duration);
 };
 
 // P0 audit: 按钮 loading 状态 (防重复提交)
@@ -195,6 +207,10 @@ const showModal = (id) => {
   console.log('[fnytdlp] showModal(' + id + ') el=', el ? el.tagName + '.' + el.className : 'NULL');
   if (el) {
     el.classList.add('active');
+    // 弹窗入场动画
+    if (typeof animateModalIn === 'function') {
+      setTimeout(() => animateModalIn(id), 10);
+    }
     console.log('[fnytdlp]   → classList after:', Array.from(el.classList).join(','));
     console.log('[fnytdlp]   → display:', getComputedStyle(el).display);
     // a11y: 焦点陷阱 + Escape 关闭
@@ -212,13 +228,26 @@ const showModal = (id) => {
 const hideModal = (id) => {
   const el = $(id);
   if (!el) return;
-  el.classList.remove('active');
-  // 清理 Escape 监听 + 还原焦点
-  if (el._escListener) {
-    document.removeEventListener('keydown', el._escListener);
-    el._escListener = null;
+  // 弹窗出场动画 (先动画再移除 class)
+  if (typeof animateModalOut === 'function') {
+    animateModalOut(id, () => {
+      el.classList.remove('active');
+      // 清理 Escape 监听 + 还原焦点
+      if (el._escListener) {
+        document.removeEventListener('keydown', el._escListener);
+        el._escListener = null;
+      }
+      if (el._prevFocus && el._prevFocus.focus) el._prevFocus.focus();
+    });
+  } else {
+    el.classList.remove('active');
+    // 清理 Escape 监听 + 还原焦点
+    if (el._escListener) {
+      document.removeEventListener('keydown', el._escListener);
+      el._escListener = null;
+    }
+    if (el._prevFocus && el._prevFocus.focus) el._prevFocus.focus();
   }
-  if (el._prevFocus && el._prevFocus.focus) el._prevFocus.focus();
 };
 window.showModal = showModal;
 window.hideModal = hideModal;
@@ -652,6 +681,13 @@ const renderTasks = () => {
     _renderedIds.clear();
     _renderedMap.clear();
     filtered.forEach(t => { _renderedIds.add(t.id); _renderedMap.set(t.id, t); });
+    // 新任务入场动画 (stagger 滑入)
+    if (typeof animateTaskIn === 'function') {
+      const items = list.querySelectorAll('.task-item');
+      items.forEach((el, i) => {
+        setTimeout(() => animateTaskIn(el), i * 30);
+      });
+    }
   } else {
     // P0-4 增量更新: 只更新 progress / speed / eta / downloaded (4 个高频变化字段)
     // 不动 innerHTML, 不重建 DOM, 不重新劫持 — 主线程时间从 80-200ms 降到 <5ms
@@ -879,10 +915,22 @@ const updateKpi = () => {
 const setKpi = (id, value) => {
   const el = $(id);
   if (!el) return;
+  const oldVal = el.textContent;
   if (el.textContent !== String(value)) {
-    el.textContent = value;
-    el.classList.add('bump');
-    setTimeout(() => el.classList.remove('bump'), 300);
+    // 数字 KPI 用 count-up 动画 (id 含 kpiActive/kpiCompleted/kpiTotal)
+    if (typeof animateKpiCounter === 'function' && id.match(/kpiActive|kpiCompleted|kpiTotal/)) {
+      const oldNum = parseInt(oldVal) || 0;
+      animateKpiCounter(el, oldNum, parseInt(value) || 0);
+    } else {
+      el.textContent = value;
+    }
+    // 脉冲动画
+    if (typeof animateKpiBump === 'function') {
+      animateKpiBump(el);
+    } else {
+      el.classList.add('bump');
+      setTimeout(() => el.classList.remove('bump'), 300);
+    }
   }
 };
 
@@ -2816,6 +2864,8 @@ const switchTab = (tab) => {
   tab.setAttribute('tabindex', '0');
   currentFilter = tab.dataset.filter;
   renderTasks();
+  // Tab 切换动画
+  if (typeof animateTabSwitch === 'function') animateTabSwitch(tab);
 };
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab));
@@ -2982,6 +3032,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // P0 修复: fnOS WebView inline onclick 失效 (见 rewireInlineOnclick 函数)
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
   rewireInlineOnclick();
+  // 为 toolbar 按钮添加点击波纹
+  document.querySelectorAll('.toolbar-btn, .btn-primary').forEach(btn => {
+    if (!btn._animClickWired) {
+      btn.addEventListener('click', function() {
+        if (typeof animateBtnClick === 'function') animateBtnClick(this);
+      });
+      btn._animClickWired = true;
+    }
+  });
   // Bug 3 修复: 静态 dialog 关闭按钮直接绑 onclick, 避免 rewireInlineOnclick 依赖
   const _closeBtn = $('playerDialogCloseBtn');
   if (_closeBtn) _closeBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); closePlayer(); return false; };
@@ -3051,6 +3110,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (h.ytDlpExists) $('headerSubtitle').textContent = `yt-dlp ${h.arch} · ffmpeg ${h.ffmpegExists ? '✓' : '✗'}`;
     if (h.version) $('headerVersion').textContent = 'v' + h.version;
   } catch (e) {}
+  // 入场动画 (KPI 卡片依次飞入 + 工具栏淡入)
+  setTimeout(() => {
+    if (typeof animatePageEntrance === 'function') animatePageEntrance();
+  }, 100);
 });
 // cleanup on page unload
 window.addEventListener('beforeunload', () => {
