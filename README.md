@@ -234,6 +234,13 @@ PHP 动态直播源（如 `http://example.com/live.php?id=xxx`）自动检测 + 
 
 ## 版本历史
 
+### v0.6.3 (2026-08-29)
+
+**yt-dlp 核心升级 + 双架构 native binary**
+
+- **yt-dlp 2026.07.04 → 2026.08.19** — 升级下载内核，修复站点提取器、curl_cffi 0.16.x 支持、hls 分片等若干上游 bug
+- **双架构 native binary** — x86_64 + aarch64 从 zipimport 平台无关脚本换成 PyInstaller native binary（每架构约 38MB），启动更稳、兼容性更好
+
 ### v0.6.2 (2026-07-27)
 
 **UI/UX 全面优化 (依赖 ui-ux-pro-max 审计)**
