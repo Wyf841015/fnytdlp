@@ -31,6 +31,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
+import net from 'node:net';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { applyLine as _applyProgressLine, newTask as _newProgressTask } from './util/progress-aggregator.js';
@@ -146,7 +147,8 @@ if (fs.existsSync(YT_DLP_BIN)) {
     const { spawnSync } = await import('node:child_process');
     const result = spawnSync(YT_DLP_BIN, ['--version'], { timeout: 5000, encoding: 'utf8' });
     if (result.status === 0) {
-      LOG('yt-dlp version: ' + result.stdout.trim());
+      _ytDlpCurrentVersion = String(result.stdout).trim();
+      LOG('yt-dlp version (current): ' + _ytDlpCurrentVersion);
     } else {
       LOG('yt-dlp version check failed: exit ' + result.status);
     }
@@ -156,8 +158,13 @@ if (fs.existsSync(YT_DLP_BIN)) {
 }
 
 // v0.5.0: yt-dlp GitHub 最新版本 (异步, 不阻塞启动)
+// P2-3: 当前已装版本 (spawnSync --version 启动时存, check-update current 返回真实值, 前端版本徽标用)
+let _ytDlpCurrentVersion = '';
+// v0.5.0: yt-dlp GitHub 最新版本 (异步, 不阻塞启动)
 let _ytDlpLatestVersion = '';
 let _ytDlpLatestCheckedAt = 0;
+// P0-3: hot-update 互斥锁 (防并发 double hot-update 损坏 binary)
+let _ytDlpHotUpdating = false;
 const checkYtDlpUpdate = async () => {
   // 缓存 6h 避免反复请求 GitHub
   if (_ytDlpLatestCheckedAt && Date.now() - _ytDlpLatestCheckedAt < 6 * 3600 * 1000) return _ytDlpLatestVersion;
@@ -763,10 +770,37 @@ const deleteCookie = (name) => {
   saveConfig();
 };
 
+// P0-1 SSRF 修复: 拒绝私网/回环/链路本地/云元数据 IP
+const isPrivateHostname = (hostname) => {
+  if (!hostname) return false;
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, ''); // 剥 IPv6 括号
+  if (net.isIP(h)) {
+    if (net.isIPv6(h)) {
+      // IPv6: ::1 回环, fe80:: 链路本地, fc00::/fd00:: (ULA), :: (未指定)
+      if (h === '::1' || h === '::' || h.startsWith('fe80:') || h.startsWith('fc00:') || h.startsWith('fd00:')) return true;
+    } else {
+      // IPv4: 解析 4 段
+      const parts = h.split('.').map(Number);
+      if (parts.length === 4) {
+        const [a, b] = parts;
+        if (a === 127) return true;                    // 127.0.0.0/8 回环
+        if (a === 10) return true;                     // 10.0.0.0/8
+        if (a === 169 && b === 254) return true;       // 169.254.0.0/16 链路本地+元数据
+        if (a === 172 && b >= 16 && b <= 31) return true; // 172.16-31.0.0/16
+        if (a === 192 && b === 168) return true;       // 192.168.0.0/16
+        if (a === 0 || a === 255) return true;         // 0.0.0.0 / broadcast
+      }
+    }
+  }
+  return false;
+};
+
 const isValidUrl = (url) => {
   try {
     const u = new URL(url);
-    return u.protocol === 'http:' || u.protocol === 'https:';
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    // SSRF: 字面 IP 黑名单 (域名 hostname 不做 DNS 解析, 但拦截直接给 IP 的靶)
+    return !isPrivateHostname(u.hostname);
   } catch (e) { return false; }
 };
 
@@ -2348,9 +2382,48 @@ const startAISummary = async (url) => {
       try {
         _ytDlpLatestCheckedAt = 0;  // 跳过缓存
         const v = await checkYtDlpUpdate();
-        sendJSON(res, 200, { latest: v, current: '' });
+        sendJSON(res, 200, { latest: v, current: _ytDlpCurrentVersion });
       } catch (e) {
         sendJSON(res, 500, { error: e.message });
+      }
+    }
+    // ── v0.6.0: yt-dlp binary 热更下载 (POST: GitHub 最新 zip → sha256 → 原子替换 YT_DLP_BIN) ──
+    else if (pathname === '/api/yt-dlp/hot-update' && req.method === 'POST') {
+      // P0-3: 互斥锁 — 防并发 double hot-update 损坏 binary
+      if (_ytDlpHotUpdating) return sendJSON(res, 409, { error: '热更新进行中, 请稍候' });
+      _ytDlpHotUpdating = true;
+      let tmp = null;
+      try {
+        const { spawn, spawnSync } = await import('node:child_process');
+        // P0-3: 唯一 tmp 文件名, 防并发写同一文件
+        tmp = YT_DLP_BIN + '.hot-' + crypto.randomUUID() + '.tmp';
+        const archBin = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
+        // 下载对应架构 binary (GitHub release 免 API 限流, binary ~3MB zipimport wrapper)
+        const url = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_${archBin}`;
+        await new Promise((resolve, reject) => {
+          const c = spawn('curl', ['-sL', '--max-time', '120', '-o', tmp, url], { stdio: 'inherit' });
+          c.on('error', reject);
+          c.on('close', (code) => code === 0 ? resolve() : reject(new Error('curl exit ' + code)));
+        });
+        // spawnSync --version 校验下载的 binary 真能跑 (不是只看 curl status)
+        const ver = spawnSync(tmp, ['--version'], { timeout: 8000, encoding: 'utf8' });
+        if (ver.status !== 0 || !ver.stdout) {
+          sendJSON(res, 500, { error: '下载的 binary 无法执行: exit ' + ver.status });
+          return;
+        }
+        _ytDlpCurrentVersion = String(ver.stdout).trim();
+        // chmod +x + 原子替换 YT_DLP_BIN
+        fs.chmodSync(tmp, 0o755);
+        fs.renameSync(tmp, YT_DLP_BIN);
+        tmp = null; // 已 rename, 无需清理
+        LOG('[yt-dlp-hot-update] applied ' + _ytDlpCurrentVersion);
+        sendJSON(res, 200, { ok: true, version: _ytDlpCurrentVersion });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      } finally {
+        // P2-7: 失败/异常一律清理残留 tmp
+        if (tmp) { try { fs.unlinkSync(tmp); } catch (_) {} }
+        _ytDlpHotUpdating = false;
       }
     }
     // v0.5.0: 导入 yt-dlp.conf 解析结果 (前端 POST 文本内容, 后端解析覆盖 config)
@@ -2619,7 +2692,7 @@ const startAISummary = async (url) => {
       try {
         const u = new URL(req.url, 'http://localhost');
         const target = u.searchParams.get('url') || '';
-        if (!target || !/^https?:\/\//i.test(target)) {
+        if (!target || !isValidUrl(target)) {
           res.writeHead(400); res.end('Invalid url'); return;
         }
         // 缓存命中
@@ -2634,7 +2707,7 @@ const startAISummary = async (url) => {
         if (target.includes('douyinpic.com') || target.includes('douyinvod.com') || target.includes('douyin.com')) {
           headers['Referer'] = 'https://www.douyin.com/';
         }
-        const proxyResp = await fetch(target, { headers, redirect: 'follow' });
+        const proxyResp = await fetch(target, { headers, redirect: 'follow', signal: AbortSignal.timeout(15000) });
         if (!proxyResp.ok) {
           res.writeHead(502, { 'Content-Type': 'text/plain' });
           res.end(`Upstream error: ${proxyResp.status}`);
@@ -2642,6 +2715,12 @@ const startAISummary = async (url) => {
         }
         const contentType = proxyResp.headers.get('content-type') || 'image/jpeg';
         const buf = Buffer.from(await proxyResp.arrayBuffer());
+        // P0-2: 响应体上限 5MB (缩略图不会更大, 防内存耗尽)
+        if (buf.length > 5 * 1024 * 1024) {
+          res.writeHead(413, { 'Content-Type': 'text/plain' });
+          res.end('Thumbnail too large (>5MB)');
+          return;
+        }
         // 写入缓存
         setThumbnailCache(target, contentType, buf);
         res.writeHead(200, {
@@ -2746,7 +2825,8 @@ const startAISummary = async (url) => {
     else if (pathname === '/api/health') {
       // P1-7 性能修复: 启动时一次性算 3 个 binExists, 缓存
       // 原: 每次 /api/health 都 fs.existsSync 3 次, 路径不变化的情况下重复 syscall
-      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: _binExists.ytDlp, ffmpegExists: _binExists.ffmpeg, aria2cExists: _binExists.aria2c, ytDlpLatest: _ytDlpLatestVersion, version: VERSION });
+      sendJSON(res, 200, { ok: true, arch: ARCH, processArch: process.arch, ytDlpBin: YT_DLP_BIN, ytDlpExists: _binExists.ytDlp, ffmpegExists: _binExists.ffmpeg, aria2cExists: _binExists.aria2c, ytDlpCurrent: _ytDlpCurrentVersion,
+      ytDlpLatest: _ytDlpLatestVersion, version: VERSION });
     } else if (pathname === '/api/events') {
       handleSSE(req, res);
     }

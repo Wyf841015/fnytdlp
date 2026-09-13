@@ -408,7 +408,7 @@ const doSearch = async () => {
     for (const item of r.results) {
       const dur = formatDuration(item.duration);
       html += `<div class="search-result-card" onclick="searchSelect('${esc(item.url)}','${esc(item.title)}')" style="display:flex;gap:10px;padding:8px;cursor:pointer;border-radius:var(--radius-sm);margin-bottom:6px;background:var(--bg-card);transition:background 0.15s;align-items:flex-start" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='var(--bg-card)'" title="点击下载此视频">
-        ${item.thumbnail ? `<img src="${wrapThumb(item.thumbnail)}" style="width:120px;height:68px;object-fit:cover;border-radius:4px;flex-shrink:0" onerror="this.style.display='none'" loading="lazy">` : ''}
+        ${item.thumbnail ? `<img src="${esc(wrapThumb(item.thumbnail))}" style="width:120px;height:68px;object-fit:cover;border-radius:4px;flex-shrink:0" onerror="this.style.display='none'" loading="lazy" referrerpolicy="no-referrer">` : ''}
         <div style="flex:1;min-width:0">
           <div style="font-weight:500;margin-bottom:4px;line-height:1.3">${esc(item.title)}</div>
           <div style="display:flex;gap:12px;font-size:12px;color:var(--text-dim)">
@@ -1462,13 +1462,12 @@ const fetchFormats = async () => {
       if (items.length === 0) return '';
       let g = `<div class="format-group"><div class="format-group-title">${icon} ${title} (${items.length})</div>`;
       for (const f of items) {
-        const label = `${f.formatId} · ${f.resolution || f.formatNote || '-'} · .${f.ext}${f.filesize ? ' · ' + f.filesize : ''}${f.tbr ? ' · ' + f.tbr : ''}${f.fps ? ' · ' + f.fps + 'fps' : ''}`;
-        g += `<div class="format-item selectable" onclick="selectFormat('${f.formatId}')" title="点击使用此格式">
-          <span class="format-id">${f.formatId}</span>
-          <span class="format-res">${f.resolution || '-'}</span>
-          <span class="format-ext">.${f.ext}</span>
-          <span class="format-size">${f.filesize || (f.tbr || '')}</span>
-          <span class="format-codec">${f.vcodec || f.acodec || '-'}</span>
+        g += `<div class="format-item selectable" data-format="${esc(f.formatId)}" title="点击使用此格式">
+          <span class="format-id">${esc(f.formatId)}</span>
+          <span class="format-res">${esc(f.resolution || '-')}</span>
+          <span class="format-ext">.${esc(f.ext)}</span>
+          <span class="format-size">${esc(f.filesize || (f.tbr || ''))}</span>
+          <span class="format-codec">${esc(f.vcodec || f.acodec || '-')}</span>
         </div>`;
       }
       return g + '</div>';
@@ -1478,6 +1477,11 @@ const fetchFormats = async () => {
     html += renderGroup('合并流', combined, '📦');
     if (!html) html = '<div class="info-preview" style="padding:12px;text-align:center">无可用格式数据</div>';
     list.innerHTML = html;
+    // P0-4: format 列表事件委托 (替代 inline onclick, 防单引号 XSS + WebView 失效)
+    list._fmtDelegated || (list._fmtDelegated = true, list.addEventListener('click', (ev) => {
+      const item = ev.target.closest('.format-item');
+      if (item && item.dataset.format) selectFormat(item.dataset.format);
+    }));
     toast(`已加载 ${r.formats.length} 个格式`, 'info');
   } catch (e) {
     list.innerHTML = `<div class="info-preview" style="padding:12px;text-align:center;color:var(--color-danger)">❌ ${esc(e.message)}</div>`;
@@ -1579,7 +1583,7 @@ const loadBrowseDir = async (dirPath) => {
     if (selBtn) selBtn.disabled = false;
     let html = '';
     if (!data.isRoot && data.parentPath) {
-      html += `<div class="browse-item browse-up" onclick="browseGoUp('${escapeHtml(data.parentPath)}')">
+      html += `<div class="browse-item browse-up" data-path="${escapeHtml(data.parentPath)}" data-up="1">
         <span class="browse-icon">📁</span>
         <span class="browse-name">.. / 上级目录</span>
       </div>`;
@@ -1590,13 +1594,20 @@ const loadBrowseDir = async (dirPath) => {
       for (const d of data.directories) {
         const safePath = escapeHtml(d.path);
         const safeName = escapeHtml(d.name);
-        html += `<div class="browse-item" onclick="browseEnterDir('${safePath}')">
+        html += `<div class="browse-item" data-path="${safePath}">
           <span class="browse-icon">📁</span>
           <span class="browse-name">${safeName}</span>
         </div>`;
       }
     }
     list.innerHTML = html;
+    // P0-4: 浏览列表事件委托 (替代 inline onclick, 路径含单引号也安全)
+    list._browseDelegated || (list._browseDelegated = true, list.addEventListener('click', (ev) => {
+      const item = ev.target.closest('.browse-item');
+      if (!item || !item.dataset.path) return;
+      const p = item.dataset.path;
+      if (item.dataset.up) browseGoUp(p); else browseEnterDir(p);
+    }));
   } catch (err) {
     const msg = (err && (err.error || err.message)) || '请求失败';
     list.innerHTML = `<div style="text-align:center;padding:24px;color:var(--color-danger)">❌ ${escapeHtml(msg)}</div>`;
@@ -1942,21 +1953,52 @@ window.checkYtDlpUpdateHint = checkYtDlpUpdateHint;
 
 const checkYtDlpUpdateNow = async () => {
   const hint = $('ytDlpVersionHint');
+  const badge = $('ytDlpVersionBadge');
   if (hint) hint.textContent = '检查中…';
+  if (badge) badge.textContent = '检查中';
   try {
     const r = await API.get('/api/yt-dlp/check-update');
     if (r.latest) {
-      toast(`GitHub 最新版本: ${r.latest}`, 'info', 4000);
-      if (hint) hint.textContent = `当前 v${window._config?.version || '?'} · GitHub 最新 ${r.latest}`;
+      const cur = r.current || '--';
+      if (badge) badge.textContent = cur;
+      const hasNew = r.latest !== cur;
+      if (hint) hint.textContent = `当前 ${cur} · GitHub 最新 ${r.latest}${hasNew ? ' · 有新版本' : ' · 已是最新'}`;
+      if (hasNew) {
+        toast(`发现新版本 yt-dlp ${r.latest}`, 'info', 5000);
+        const ok = confirm(`当前 yt-dlp ${cur}\nGitHub 最新 ${r.latest}\n\n检测到新版本，是否下载并热更新 binary？`);
+        if (ok) await ytDlpHotUpdate();
+      } else {
+        toast(`yt-dlp 已是最新 (${cur})`, 'success', 3000);
+      }
     } else {
       toast('未能获取最新版本', 'warning');
       if (hint) hint.textContent = '检测失败';
+      if (badge) badge.textContent = '--';
     }
   } catch (e) {
     toast('检查失败: ' + e.message, 'error');
   }
 };
+
+const ytDlpHotUpdate = async () => {
+  const badge = $('ytDlpVersionBadge');
+  if (badge) badge.textContent = '更新中';
+  try {
+    const r = await API.post('/api/yt-dlp/hot-update');
+    if (r.ok && r.version) {
+      toast(`yt-dlp 已热更新至 ${r.version}`, 'success', 5000);
+      if (badge) badge.textContent = r.version;
+    } else {
+      toast('热更新失败', 'error');
+      if (badge) badge.textContent = '--';
+    }
+  } catch (e) {
+    toast('热更新失败: ' + e.message, 'error', 5000);
+    if (badge) badge.textContent = '--';
+  }
+};
 window.checkYtDlpUpdateNow = checkYtDlpUpdateNow;
+window.ytDlpHotUpdate = ytDlpHotUpdate;
 
 // ── v0.4.0 文件名模板实时预览 ─────────────────────────
 const _previewOutputTemplate = (tpl) => {
@@ -3109,6 +3151,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const h = await API.get('/api/health');
     if (h.ytDlpExists) $('headerSubtitle').textContent = `yt-dlp ${h.arch} · ffmpeg ${h.ffmpegExists ? '✓' : '✗'}`;
     if (h.version) $('headerVersion').textContent = 'v' + h.version;
+    if (h.ytDlpCurrent !== undefined && h.ytDlpCurrent) $('ytDlpVersionBadge').textContent = h.ytDlpCurrent;
   } catch (e) {}
   // 入场动画 (KPI 卡片依次飞入 + 工具栏淡入)
   setTimeout(() => {
