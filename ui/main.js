@@ -1956,7 +1956,6 @@ const checkYtDlpUpdateHint = async () => {
   if (!hint) return;
   try {
     const r = await API.get('/api/health');
-    const cur = (r.version || '') + ' / yt-dlp?';
     hint.textContent = `当前 v${r.version} · yt-dlp ${r.ytDlpExists ? '✓' : '✗'}`;
     if (r.aria2cExists !== undefined) {
       hint.textContent += ` · aria2c ${r.aria2cExists ? '✓' : '✗'}`;
@@ -1978,7 +1977,14 @@ const checkYtDlpUpdateNow = async () => {
   try {
     const r = await API.get('/api/yt-dlp/check-update');
     if (r.latest) {
-      const cur = r.current || '--';
+      // P2-9: current 缺失时不算新版本, 只提示 latest (旧逻辑 cur='--' 导致 hasNew 恒真误报)
+      if (!r.current) {
+        if (hint) hint.textContent = `已装版本未知 · GitHub 最新 ${r.latest}`;
+        if (badge) badge.textContent = '--';
+        toast(`GitHub 最新 yt-dlp ${r.latest}`, 'info', 4000);
+        return;
+      }
+      const cur = r.current;
       if (badge) badge.textContent = cur;
       const hasNew = r.latest !== cur;
       if (hint) hint.textContent = `当前 ${cur} · GitHub 最新 ${r.latest}${hasNew ? ' · 有新版本' : ' · 已是最新'}`;
@@ -2004,9 +2010,13 @@ const ytDlpHotUpdate = async () => {
   if (badge) badge.textContent = '更新中';
   try {
     const r = await API.post('/api/yt-dlp/hot-update');
-    if (r.ok && r.version) {
-      toast(`yt-dlp 已热更新至 ${r.version}`, 'success', 5000);
-      if (badge) badge.textContent = r.version;
+    // P2-10: 成功以 r.ok 为准; version 缺失仍算成功, 只是暂时显示未知 (不能用 r.ok && r.version 误判失败)
+    if (r.ok) {
+      const ver = r.version || '未知版本';
+      toast(`yt-dlp 已热更新至 ${ver}`, 'success', 5000);
+      if (badge) badge.textContent = r.version || '--';
+      // 刷新设置里的 hint (原只更新 badge, hint 停留旧状态)
+      checkYtDlpUpdateHint();
     } else {
       toast('热更新失败', 'error');
       if (badge) badge.textContent = '--';

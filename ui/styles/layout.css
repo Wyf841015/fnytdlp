@@ -101,6 +101,21 @@
   letter-spacing: 0.02em;
 }
 
+.version-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 999px;
+  color: var(--text);
+  background: var(--bg-elev, rgba(120,120,120,0.15));
+  border: 1px solid var(--border, rgba(120,120,120,0.25));
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
 .header-title .logo {
   width: 28px;
   height: 28px;
