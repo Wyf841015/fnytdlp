@@ -770,37 +770,27 @@ const deleteCookie = (name) => {
   saveConfig();
 };
 
-// P0-1 SSRF 修复: 拒绝私网/回环/链路本地/云元数据 IP
-const isPrivateHostname = (hostname) => {
-  if (!hostname) return false;
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, ''); // 剥 IPv6 括号
-  if (net.isIP(h)) {
-    if (net.isIPv6(h)) {
-      // IPv6: ::1 回环, fe80:: 链路本地, fc00::/fd00:: (ULA), :: (未指定)
-      if (h === '::1' || h === '::' || h.startsWith('fe80:') || h.startsWith('fc00:') || h.startsWith('fd00:')) return true;
-    } else {
-      // IPv4: 解析 4 段
-      const parts = h.split('.').map(Number);
-      if (parts.length === 4) {
-        const [a, b] = parts;
-        if (a === 127) return true;                    // 127.0.0.0/8 回环
-        if (a === 10) return true;                     // 10.0.0.0/8
-        if (a === 169 && b === 254) return true;       // 169.254.0.0/16 链路本地+元数据
-        if (a === 172 && b >= 16 && b <= 31) return true; // 172.16-31.0.0/16
-        if (a === 192 && b === 168) return true;       // 192.168.0.0/16
-        if (a === 0 || a === 255) return true;         // 0.0.0.0 / broadcast
-      }
-    }
-  }
-  return false;
-};
-
 const isValidUrl = (url) => {
   try {
     const u = new URL(url);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
-    // SSRF: 字面 IP 黑名单 (域名 hostname 不做 DNS 解析, 但拦截直接给 IP 的靶)
-    return !isPrivateHostname(u.hostname);
+    // P0-1 SSRF: 拒绝私网/回环/链路本地/云元数据 IP (字面 IP 判定, 域名不解析)
+    // 纯字符串 IP 判定, 不依赖 node:net (保证函数可被测试 eval 独立提取)
+    const hostname = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (/^::/.test(hostname) || /^[0-9a-f:]{2,45}$/.test(hostname)) {
+      // IPv6 形式: ::1 回环, :: 未指定, fe80:: 链路本地, fc00::/fd00:: ULA
+      if (hostname === '::1' || hostname === '::' || hostname.startsWith('fe80') || hostname.startsWith('fc') || hostname.startsWith('fd')) return false;
+    }
+    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+      const p = hostname.split('.').map(Number);
+      const a = p[0], b = p[1];
+      if (a === 127 || a === 10) return false;                 // 127.0.0.0/8 + 10.0.0.0/8
+      if (a === 169 && b === 254) return false;                // 169.254.0.0/16 链路本地+元数据
+      if (a === 172 && b >= 16 && b <= 31) return false;       // 172.16-31.0.0/16
+      if (a === 192 && b === 168) return false;                // 192.168.0.0/16
+      if (a === 0 || a === 255) return false;                  // 0.0.0.0 / broadcast
+    }
+    return true;
   } catch (e) { return false; }
 };
 
