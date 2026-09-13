@@ -893,6 +893,25 @@ const rewireInlineOnclick = (root) => {
   });
 };
 window.rewireInlineOnclick = rewireInlineOnclick;
+// ── P1-7: 动态内容自动 rewire (MutationObserver 兜底) ─────────────
+// 搜索/历史/格式/播放列表等用 innerHTML 动态注入的 [onclick], 一次 init 的 rewire
+// 覆盖不到。注册一个全局 observer, 任何新插入元素带 onclick 即自动接管。
+let _rewireObserverStarted = false;
+const startRewireObserver = () => {
+  if (_rewireObserverStarted) return;
+  _rewireObserverStarted = true;
+  try {
+    const mo = new MutationObserver(() => {
+      // 只 rewire 那些带 onclick 但还没被劫持的元素, 次数受限防抖动
+      document.querySelectorAll('[onclick]:not(#settingsBtn):not([data-no-rewire])').forEach(el => {
+        if (!el._fnytdlpWired) rewireInlineOnclick(el);
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+    window._rewireObserver = mo; // 便于 cleanup 用
+  } catch (e) { console.warn('[fnytdlp] MutationObserver init failed', e); }
+};
+window.startRewireObserver = startRewireObserver;
 
 const updateKpi = () => {
   const active = tasks.filter(t => t.status === 'downloading' || t.status === 'pending' || t.status === 'processing').length;
@@ -2623,7 +2642,7 @@ const viewTaskSubtitle = async (id) => {
     // 弹出查看器 (复用现有 modal 模式)
     const html = `<div style="max-height:60vh;overflow-y:auto;white-space:pre-wrap;line-height:1.6;font-size:14px;padding:8px;background:var(--bg-card);border-radius:var(--radius-sm)">${esc(r.text)}</div>
       <div style="margin-top:8px;display:flex;gap:8px">
-        <button class="btn btn-primary" onclick="navigator.clipboard.writeText(arguments[0].dataset.text).then(()=>toast('已复制 '+arguments[0].dataset.length+' 字符','success'))" data-text="${esc(r.text)}" data-length="${r.length}">📋 复制全文</button>
+        <button class="btn btn-primary" onclick="navigator.clipboard.writeText(this.dataset.text).then(()=>toast('已复制 '+this.dataset.length+' 字符','success'))" data-text="${esc(r.text)}" data-length="${r.length}">📋 复制全文</button>
         <span style="color:var(--text-dim);align-self:center">📄 ${esc(r.file)} · ${r.length} 字符</span>
       </div>`;
     // 复用 confirm modal 样式但换成展示
@@ -3074,6 +3093,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // P0 修复: fnOS WebView inline onclick 失效 (见 rewireInlineOnclick 函数)
   // 排除 #settingsBtn（已在 addEventListener 单独绑定）
   rewireInlineOnclick();
+  // P1-7: 启动 MutationObserver, 动态注入的 [onclick] 自动 rewire (搜索/历史/格式等)
+  startRewireObserver();
   // 为 toolbar 按钮添加点击波纹
   document.querySelectorAll('.toolbar-btn, .btn-primary').forEach(btn => {
     if (!btn._animClickWired) {

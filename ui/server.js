@@ -1989,7 +1989,7 @@ const classifyYtDlpError = (errorText) => {
 
 // ── request handler ───────────────────────────────────────────────────
 const handle = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // P1-5: 移除 ACAO:* — 同源访问不需要 CORS; 跨域会被网关层拦, 防恶意站点用 fetch 读本机 API
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
@@ -2188,6 +2188,7 @@ const startAISummary = async (url) => {
       const resp = await fetch(`${ai.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ai.apiKey}` },
+        signal: AbortSignal.timeout(60000), // P1-6: AI 请求 60s 超时, 防慢上游死锁
         body: JSON.stringify({
           model: ai.model,
           messages: [
@@ -2957,7 +2958,7 @@ const main = () => {
     handle(req, res);
   });
   httpServer.on('error', (e) => { LOG('[FATAL] HTTP error:', e.message); process.exit(1); });
-  httpServer.listen(PORT, '0.0.0.0', () => LOG('HTTP listening on ' + PORT));
+  httpServer.listen(PORT, '127.0.0.1', () => LOG('HTTP listening on ' + PORT));
   // UNIX socket (fnOS 网关代理)
   const sockServer = http.createServer((req, res) => {
     req.path = req.url.split('?')[0];
