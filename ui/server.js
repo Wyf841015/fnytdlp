@@ -142,6 +142,8 @@ LOG('FFMPEG_BIN=' + FFMPEG_BIN);
 LOG('ARIA2C_BIN=' + ARIA2C_BIN + ' (exists=' + fs.existsSync(ARIA2C_BIN) + ')');
 
 // P2-3: 启动时检测 yt-dlp 版本
+// 当前已装版本变量必须在检测块之前声明 (TDZ: let 声明前访问会抛 ReferenceError)
+let _ytDlpCurrentVersion = '';
 if (fs.existsSync(YT_DLP_BIN)) {
   try {
     const { spawnSync } = await import('node:child_process');
@@ -159,8 +161,6 @@ if (fs.existsSync(YT_DLP_BIN)) {
 
 // v0.5.0: yt-dlp GitHub 最新版本 (异步, 不阻塞启动)
 // P2-3: 当前已装版本 (spawnSync --version 启动时存, check-update current 返回真实值, 前端版本徽标用)
-let _ytDlpCurrentVersion = '';
-// v0.5.0: yt-dlp GitHub 最新版本 (异步, 不阻塞启动)
 let _ytDlpLatestVersion = '';
 let _ytDlpLatestCheckedAt = 0;
 // P0-3: hot-update 互斥锁 (防并发 double hot-update 损坏 binary)
