@@ -1,0 +1,149 @@
+/* ==========================================================================
+   apple.css — Apple Design / Fluid Interaction 增强层
+   ==========================================================================
+   依据 apple-design skill (WWDC Designing Fluid Interfaces) 规范逐条落地:
+   - §1 Response: 反馈活在按下瞬间, 不是释放时
+   - §2 1:1 直接操控
+   - §3 Interruptibility: 动画从当前值出发可中断
+   - §11 Frame-level smoothness: 只动 transform/opacity
+   - §12 Materials & depth: 玻璃材质亮边 + 光影层级
+   - §14 Reduced motion / transparency / contrast 三信号
+   - §15 Typography: 光学大小, 负 tracking, 紧 leading
+   --------------------------------------------------------------------------
+   本文件只做增强 (override), 不删不改现有 tokens/组件规则。
+   可整体移除回滚 — 删除 apple.css 的 <link> 即可完全还原。
+   ========================================================================== */
+
+/* ─────────────────────────────────────────────────────────────
+   §15 Typography — 大标题负 tracking, 光学大小, 线性收紧
+   ───────────────────────────────────────────────────────────── */
+.header-title {
+  font-optical-sizing: auto;
+  letter-spacing: -0.02em;          /* 大标题负 tracking */
+  line-height: 1.05;                 /* 紧 leading */
+}
+.header-subtitle {
+  font-optical-sizing: auto;
+  letter-spacing: 0.002em;           /* 小字微微正 tracking 可读 */
+}
+.modal-title,
+.empty-title {
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+/* KPI 数值 — 数字用等宽字形避免抖动, 负 tracking 显紧凑 */
+.kpi-value, .kpi-num,
+[class*="kpi"] [class*="value"] {
+  font-variant-numeric: tabular-nums;
+  font-optical-sizing: auto;
+  letter-spacing: -0.015em;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   §1 Response — 反馈活在按下瞬间
+   所有可按元素: pointer-down 即刻 scale, 100ms 释放手感
+   ───────────────────────────────────────────────────────────── */
+.btn, .toolbar-btn, .icon-btn,
+.task-actions button, .kpi-card,
+.batch-item, .format-item, .playlist-item,
+.sched-item, .media-item,
+select, option,
+input[type="checkbox"], input[type="radio"] {
+  -webkit-tap-highlight-color: transparent;
+}
+/* 统一按钮按压反馈 — ease-out 快起步 (apple: 不能用 ease-in 表迟钝) */
+.btn:active:not(:disabled),
+.toolbar-btn:active,
+.icon-btn:active {
+  transform: scale(0.97);
+  transition: transform 100ms ease-out;
+}
+/* 任务卡按压 — 物理下沉 + 亮边 */
+.task-item:active,
+.sched-item:active,
+.format-item:active,
+.playlist-item:active {
+  transform: scale(0.99);
+  transition: transform 100ms ease-out;
+}
+/* hover 保持原有缓动, 但只动 transform/opacity (§11: 别动布局属性) */
+
+/* ─────────────────────────────────────────────────────────────
+   §3 Interruptibility + §11 只动 transform/opacity
+   把 `transition: all` 收敛为具体属性 (性能 + 可中断)
+   ───────────────────────────────────────────────────────────── */
+.btn, .toolbar-btn, .icon-btn,
+.kpi-card, .task-item {
+  transition: transform 200ms cubic-bezier(0.23, 1, 0.32, 1),
+              box-shadow 250ms ease,
+              border-color 200ms ease,
+              background-color 250ms ease,
+              opacity 200ms ease;   /* 显式列出, 不用 all */
+}
+
+/* ─────────────────────────────────────────────────────────────
+   §12 Materials & depth — 玻璃亮边 + 层级阴影
+   更大表面 = 更强 blur + 更深阴影 (material weight 编码层级)
+   ───────────────────────────────────────────────────────────── */
+/* 顶部亮边 — light catching the material (apple 玻璃工艺) */
+.header {
+  border-bottom-color: var(--border-subtle);
+  box-shadow: 0 1px 0 hsl(0, 0%, 100% / 0.06) inset,
+              0 4px 24px hsl(220, 4%, 0% / 0.18);
+}
+/* 弹窗 — 实底快速 + 更强阴影 (不能加 backdrop-filter: CEF 键盘弹出白遮罩 bug,
+   见 fnytdlp input-focused 修复). 层级靠阴影+玻璃 header 表达 */
+.modal-overlay .modal,
+.modal-content {
+  background: var(--bg-elevated);     /* 实底, 防键盘渲染 bug */
+  box-shadow: 0 24px 80px hsl(220, 4%, 0% / 0.5),
+              0 2px 8px hsl(220, 4%, 0% / 0.2);
+}
+/* KPI hover — 悬浮即浮起, 对应 hover: 层级提升 */
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px hsl(220, 4%, 0% / 0.25);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   §14 Reduced motion / transparency / contrast — 三信号
+   目前项目无任何 reduced-motion 处理, 补齐 (apple 必需项)
+   ───────────────────────────────────────────────────────────── */
+/* 动效减弱: 滑/弹簧 → 短交叉淡入, 去掉弹性/overshoot */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+    scroll-behavior: auto !important;
+  }
+  .kpi-card:hover,
+  .task-item:hover,
+  .btn:hover { transform: none !important; }
+  /* 保留帮助理解的 opacity 变化, 移除位移 (apple: reduced 非无反馈) */
+  .toast { transform: none !important; }
+}
+/* 透明度减弱: 玻璃 → 更实 (frostier) */
+@media (prefers-reduced-transparency: reduce) {
+  .header, .modal-overlay .modal,
+  .modal-content, .toolbar {
+    background: var(--bg-elevated) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+/* 高对比: 近实底 + 明确对比边框 */
+@media (prefers-contrast: more) {
+  .header, .modal-overlay .modal, .modal-content {
+    border: 1px solid var(--border-prominent) !important;
+  }
+  .btn { border-width: 1.5px; }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   §2 直接操控手感补充 — 滚动条融入, 停留反馈
+   ───────────────────────────────────────────────────────────── */
+/* 可拖拽/可点标题光标 */
+.kpi-card:hover { cursor: default; }
+.task-item[data-clickable="true"]:hover { cursor: pointer; }
