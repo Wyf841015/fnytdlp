@@ -1244,6 +1244,8 @@ html[data-theme='light'] .toast.info {
 .format-group { margin-bottom: 8px; }
 .format-group-title { font-size:0.85rem; font-weight:600; padding:4px 8px; background:var(--bg-alt); border-radius:var(--radius-sm) var(--radius-sm) 0 0; }
 .format-item.selectable { cursor:pointer; display:flex; gap:6px; padding:4px 8px; font-size:0.8rem; border-bottom:1px solid var(--border); transition:background 0.15s; }
+.format-dl-badge { color:var(--color-success, #4ade80); font-weight:700; }
+.format-item.has-downloaded { opacity:0.7; }
 .format-item.selectable:hover { background:var(--bg-hover); }
 .format-item.selectable .format-id { font-weight:600; color:var(--color-primary); min-width:40px; }
 .format-item.selectable .format-res { min-width:80px; }

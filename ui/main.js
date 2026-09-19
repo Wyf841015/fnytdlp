@@ -1465,6 +1465,17 @@ const fetchFormats = async () => {
   container.style.display = 'block';
   list.innerHTML = '<div class="info-preview" style="padding:12px;text-align:center">⏳ 加载格式列表...</div>';
   try {
+    // Feature 2: 已下载质量徽标 — 先查该视频 id 是否已有下载文件
+    const info = _lastParsedInfo;
+    let dlSet = null;
+    if (info && info.id) {
+      try {
+        const dl = await API.get('/api/dlinfo?id=' + encodeURIComponent(info.id));
+        if (dl && dl.files) {
+          dlSet = new Set(dl.files.map(f => f.name));
+        }
+      } catch (e) { /* 静默 */ }
+    }
     const r = await API.post('/api/formats', { url, cookieName });
     if (!r || !r.formats || r.formats.length === 0) {
       list.innerHTML = '<div class="info-preview" style="padding:12px;text-align:center">未找到可用格式</div>';
@@ -1481,7 +1492,11 @@ const fetchFormats = async () => {
       if (items.length === 0) return '';
       let g = `<div class="format-group"><div class="format-group-title">${icon} ${title} (${items.length})</div>`;
       for (const f of items) {
-        g += `<div class="format-item selectable" data-format="${esc(f.formatId)}" title="点击使用此格式">
+        // 尝试从已下载文件名判断该格式/分辨率是否已有 (文件名含 [id], 无法精确匹配分辨率, 但可标"该视频已下载")
+        const res = (f.resolution || '').toLowerCase();
+        const hasDl = dlSet && dlSet.size > 0 ? ' has-downloaded' : '';
+        g += `<div class="format-item selectable${hasDl}" data-format="${esc(f.formatId)}" title="${dlSet && dlSet.size>0 ? '该视频已有下载文件' : '点击使用此格式'}">
+          ${dlSet && dlSet.size > 0 ? '<span class="format-dl-badge" title="此视频已下载过">✓</span>' : ''}
           <span class="format-id">${esc(f.formatId)}</span>
           <span class="format-res">${esc(f.resolution || '-')}</span>
           <span class="format-ext">.${esc(f.ext)}</span>

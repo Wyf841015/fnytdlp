@@ -2382,6 +2382,28 @@ const startAISummary = async (url) => {
       const v = u.searchParams.get('value') || '';
       sendJSON(res, 200, { value: v, bytes: parseSizeString(v) });
     }
+    // Feature 2: 已下载质量徽标 — 扫描下载目录匹配 [id] 的所有文件
+    else if (pathname === '/api/dlinfo' && req.method === 'GET') {
+      const u = new URL(req.url, 'http://localhost');
+      const id = (u.searchParams.get('id') || '').trim();
+      if (!id) return sendJSON(res, 400, { error: 'id is required' });
+      const dlDir = config.downloadPath;
+      const found = [];
+      try {
+        if (fs.existsSync(dlDir)) {
+          for (const f of fs.readdirSync(dlDir)) {
+            const m = f.match(/\[([^\]]+)\]/);  // [<id>] 模式来自 outputTemplate
+            if (m && m[1] === id) {
+              try {
+                const st = fs.statSync(path.join(dlDir, f));
+                if (st.isFile()) found.push({ name: f, size: st.size });
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (e) { LOG('[dlinfo] scan failed:', e.message); }
+      sendJSON(res, 200, { id, files: found, count: found.length });
+    }
     // v0.5.0: yt-dlp 更新检查 (强制刷新)
     else if (pathname === '/api/yt-dlp/check-update' && req.method === 'GET') {
       try {
