@@ -198,6 +198,14 @@
           </div>
         </div>
         <div id="addPreview" class="info-preview">粘贴 URL 后点「解析」查看元数据</div>
+        <div id="ambiguousBar" style="display:none" class="form-group">
+          <label class="form-label">⚠️ 此 URL 同时包含视频和播放列表 — 请选择获取方式</label>
+          <div class="form-row" style="gap:8px;margin-top:6px">
+            <button class="btn btn-sm btn-primary" onclick="resolveAmbiguity('video')">🎬 仅下载单视频</button>
+            <button class="btn btn-sm btn-secondary" onclick="resolveAmbiguity('playlist')">📋 下载整个播放列表</button>
+          </div>
+          <div class="form-hint">YouTube 的 <code>watch?v=X&amp;list=Y</code> 等 URL 同时指向一个视频和一个列表</div>
+        </div>
       </div>
 
       <!-- 格式列表 (解析后显示) -->

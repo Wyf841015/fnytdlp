@@ -1047,10 +1047,44 @@ const showAddTaskModal = () => {
   $('addCookieName').value = '';
   $('addPreview').textContent = '点 "解析" 按钮查看元数据';
   loadCookieSelect();
+  _ambiguityChoice = null;  // Feature 3: 重置歧义选择 (新任务)
+  const ambBar = $('ambiguousBar');
+  if (ambBar) ambBar.style.display = 'none';
   showModal('addTaskModal');
   setTimeout(() => $('addUrls').focus(), 100);
 };
 window.showAddTaskModal = showAddTaskModal;
+
+// Feature 3: 歧义 URL 处理 — video + playlist 同 URL 时显式选择
+let _ambiguityChoice = null;  // 'video' | 'playlist'
+const detectAmbiguousUrl = (url) => {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    const host = (u.hostname || '').toLowerCase();
+    // YouTube 风格: 同时有视频 v= 和 列表 list=
+    if (host.includes('youtube.com') || host.includes('youtu.be')) {
+      const hasV = !!(u.searchParams.get('v') || (u.pathname.includes('/shorts/') && u.pathname.split('/').filter(Boolean).length >= 2));
+      const hasList = !!u.searchParams.get('list');
+      return hasV && hasList;
+    }
+  } catch (e) {}
+  return false;
+};
+const resolveAmbiguity = (choice) => {
+  _ambiguityChoice = choice;
+  const bar = $('ambiguousBar');
+  if (bar) bar.style.display = 'none';
+  const noPlaylistCb = $('addNoPlaylist');
+  // 'video' → 强制 --no-playlist (只下单视频); 'playlist' → 关闭 noPlaylist 下整个列表
+  if (noPlaylistCb) noPlaylistCb.checked = (choice === 'video');
+  const hint = choice === 'video' ? '🎬 将仅下载单个视频' : '📋 将下载整个播放列表';
+  $('addPreview').innerHTML = `<div class="info-preview">✔ ${hint}<br><span style="font-size:0.8rem;color:var(--text-dim)">已设置，点击「解析」继续加载元数据</span></div>`;
+  // 重新触发解析以加载元数据 (绕过歧义检测)
+  parseUrls();
+};
+window.detectAmbiguousUrl = detectAmbiguousUrl;
+window.resolveAmbiguity = resolveAmbiguity;
 
 const parseUrls = async () => {
   const raw = $('addUrls').value.trim();
@@ -1058,6 +1092,17 @@ const parseUrls = async () => {
   const urls = raw.match(urlRegex);
   if (!urls || urls.length === 0) { toast('未找到有效 URL', 'warn'); return; }
   const url = urls[0];
+  // Feature 3: 歧义 URL 检测 — 同时含视频 id + list (YouTube watch?v=X&list=Y)
+  // 显示双按钮让用户选"单视频"或"整个列表"; 已选择则跳过检测
+  const amb = detectAmbiguousUrl(url);
+  const ambBar = $('ambiguousBar');
+  if (amb && !_ambiguityChoice && ambBar) {
+    ambBar.style.display = 'block';
+    $('addPreview').innerHTML = `<div class="info-preview">⚠️ 检测到歧义 URL（同时包含视频与播放列表），请先用上方按钮选择获取方式，再点击「解析」查看元数据。</div>`;
+    return;  // 待用户选择后自动重新解析
+  } else if (ambBar) {
+    ambBar.style.display = 'none';
+  }
   // 自动匹配 Cookie (如果尚未手动选择)
   const sel = $('addCookieName');
   if (sel && sel.value === '') {
