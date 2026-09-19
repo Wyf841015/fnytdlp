@@ -2665,6 +2665,44 @@ function showImgFull(img) {
 }
 window.showImgFull = showImgFull;
 
+// ── Contact Modal (联系作者) ────────────────────────────────
+const showContactModal = () => {
+  showModal('contactModal');
+};
+window.showContactModal = showContactModal;
+
+const copyQQNumber = () => {
+  const qq = '745565752';
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(qq).then(() => {
+        toast('群号已复制: ' + qq, 'success');
+      }).catch(() => fallbackCopyQQ(qq));
+    } else {
+      fallbackCopyQQ(qq);
+    }
+  } catch (e) {
+    fallbackCopyQQ(qq);
+  }
+};
+const fallbackCopyQQ = (qq) => {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = qq;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('群号已复制: ' + qq, 'success');
+  } catch (e) {
+    toast('请手动复制群号: ' + qq, 'info');
+  }
+};
+window.copyQQNumber = copyQQNumber;
+window.fallbackCopyQQ = fallbackCopyQQ;
+
 // ── Task Detail Modal ──────────────────────────────────────────────
 function showTaskDetail(id) {
   _currentDetailTaskId = id;

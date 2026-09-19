@@ -33,6 +33,7 @@
         <button type="button" class="btn-icon" id="themeBtn" title="切换主题" onclick="toggleTheme()">🎨</button>
         <button type="button" class="btn-icon" id="sponsorBtn" title="赞助" onclick="showModal('sponsorModal')">❤</button>
         <button type="button" class="btn-icon" id="ytDlpCheckBtn" title="检测 yt-dlp 版本" onclick="checkYtDlpUpdateNow()">🔄</button>
+        <button type="button" class="btn-icon" id="contactBtn" title="联系作者" onclick="showContactModal()">✉️</button>
       </div>
     </div>
   </header>
@@ -865,6 +866,26 @@
           <p class="wx">微信</p>
           <img class="wx" src="images/sponsor_wechat.png" alt="微信赞助" onclick="showImgFull(this)">
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Contact Modal (联系作者) -->
+<div id="contactModal" class="modal-overlay" onclick="if(event.target===this)hideModal('contactModal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:360px">
+    <div class="modal-header">
+      <h2 class="modal-title">✉️ 联系作者</h2>
+      <button class="btn-icon" onclick="hideModal('contactModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="sponsor-subtitle">加入 QQ 群，反馈问题 / 提需求 / 交流使用</p>
+      <div style="text-align:center;padding:16px 0">
+        <div style="font-size:1.3rem;font-weight:700;color:var(--accent);letter-spacing:2px;padding:12px;background:var(--bg-input);border-radius:var(--radius-md);cursor:pointer;user-select:all" id="qqNumber">745565752</div>
+        <div class="form-hint" style="margin-top:8px">QQ 群号（长按/点击可复制）</div>
+      </div>
+      <div style="text-align:center;margin-top:8px">
+        <button class="btn btn-primary" onclick="copyQQNumber()">📋 复制群号</button>
       </div>
     </div>
   </div>
