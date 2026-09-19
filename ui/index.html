@@ -91,6 +91,7 @@
         <button class="toolbar-btn ghost" onclick="showSettingsModal()" aria-label="打开设置">⚙<span class="btn-text">设置</span></button>
         <button class="toolbar-btn ghost" onclick="showStatsModal()" aria-label="下载统计">📊<span class="btn-text">统计</span></button>
         <button class="toolbar-btn ghost" onclick="showHistoryModal()" aria-label="下载历史">📜<span class="btn-text">历史</span></button>
+        <button class="toolbar-btn ghost" onclick="showFilesModal()" aria-label="已下载文件">🗂<span class="btn-text">文件</span></button>
         <button class="toolbar-btn ghost" onclick="showCookieModal()" aria-label="管理 Cookie">🍪<span class="btn-text">Cookie</span></button>
         <button class="toolbar-btn ghost" onclick="showSubscriptionModal()" aria-label="管理订阅">🔔<span class="btn-text">订阅</span></button>
       </div>
@@ -355,6 +356,30 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="hideModal('searchModal')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 历史记录 Modal (借鉴 ytDownloader DownloadHistory) -->
+<div class="modal-overlay" id="filesModal" onclick="if(event.target===this)hideModal('filesModal')">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title">🗂 已下载文件</h2>
+      <button class="btn-icon" onclick="hideModal('filesModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="display:flex;gap:8px;margin-bottom:12px">
+        <input class="input" id="filesSearch" placeholder="搜索文件名..." oninput="loadDownloadedFiles()" style="flex:1">
+        <button class="btn btn-ghost" onclick="loadDownloadedFiles()" style="flex-shrink:0">🔄 刷新</button>
+      </div>
+      <div id="downloadDirHint" class="form-hint" style="margin-bottom:8px"></div>
+      <div id="filesList" class="history-list" style="max-height:55vh;overflow-y:auto">
+        <div class="info-preview" style="padding:24px;text-align:center;color:var(--text-dim)">加载中...</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span id="filesCount" class="form-hint" style="flex:1"></span>
+      <button class="btn btn-ghost" onclick="hideModal('filesModal')">关闭</button>
     </div>
   </div>
 </div>

@@ -2404,6 +2404,46 @@ const startAISummary = async (url) => {
       } catch (e) { LOG('[dlinfo] scan failed:', e.message); }
       sendJSON(res, 200, { id, files: found, count: found.length });
     }
+    // Feature 4: 下载文件浏览器 — 列出下载目录文件
+    else if (pathname === '/api/dl-files' && req.method === 'GET') {
+      const u = new URL(req.url, 'http://localhost');
+      const q = (u.searchParams.get('q') || '').toLowerCase();
+      const dlDir = config.downloadPath;
+      const items = [];
+      try {
+        if (fs.existsSync(dlDir)) {
+          for (const f of fs.readdirSync(dlDir)) {
+            const full = path.join(dlDir, f);
+            try {
+              const st = fs.statSync(full);
+              if (st.isFile()) {
+                items.push({ name: f, size: st.size, mtime: st.mtimeMs });
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (e) { LOG('[dl-files] scan failed:', e.message); }
+      items.sort((a, b) => b.mtime - a.mtime);
+      const filtered = q ? items.filter(x => x.name.toLowerCase().includes(q)) : items;
+      sendJSON(res, 200, { files: filtered, dir: dlDir, total: filtered.length });
+    }
+    // Feature 4: 删除单个已下载文件 (永久, 需确认)
+    else if (pathname === '/api/dl-files' && req.method === 'DELETE') {
+      const body = await parseBodySafe(req);
+      const name = (body.name || '').trim();
+      if (!name) return sendJSON(res, 400, { error: 'name is required' });
+      // 安全: 只允许删除下载目录直接子文件的文件名 (防路径穿越)
+      const base = path.basename(name);
+      if (base !== name) return sendJSON(res, 400, { error: 'invalid filename' });
+      const full = path.join(config.downloadPath, base);
+      try {
+        if (!fs.existsSync(full)) return sendJSON(res, 404, { error: 'file not found' });
+        fs.unlinkSync(full);
+        sendJSON(res, 200, { ok: true, deleted: base });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
     // v0.5.0: yt-dlp 更新检查 (强制刷新)
     else if (pathname === '/api/yt-dlp/check-update' && req.method === 'GET') {
       try {
@@ -2564,7 +2604,46 @@ const startAISummary = async (url) => {
         sendJSON(res, 500, { error: e.message });
       }
     }
-    // ── info / parse ──
+    // Feature 4: 文件浏览器直接播放 — /api/play-file/<filename>
+    else if (pathname.startsWith('/api/play-file/') && req.method === 'GET') {
+      const name = decodeURIComponent(pathname.split('/')[3] || '');
+      const base = path.basename(name);
+      if (base !== name) return sendJSON(res, 400, { error: 'invalid filename' });
+      const fp = path.join(config.downloadPath, base);
+      try {
+        if (!fs.existsSync(fp)) return sendJSON(res, 404, { error: 'file not found' });
+        const stat = fs.statSync(fp);
+        const ext = path.extname(fp).toLowerCase();
+        const ct = {
+          '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska',
+          '.m4a': 'audio/mp4', '.mp3': 'audio/mpeg', '.opus': 'audio/opus',
+          '.flac': 'audio/flac', '.wav': 'audio/wav', '.m4v': 'video/mp4',
+        }[ext] || 'application/octet-stream';
+        const range = req.headers.range;
+        if (range) {
+          const parts = range.replace(/bytes=/, '').split('-');
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+          const chunkSize = end - start + 1;
+          res.writeHead(206, {
+            'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+            'Accept-Ranges': 'bytes', 'Content-Length': chunkSize,
+            'Content-Type': ct, 'Cache-Control': 'no-cache',
+            'Content-Disposition': 'inline',
+          });
+          fs.createReadStream(fp, { start, end }).pipe(res);
+        } else {
+          res.writeHead(200, {
+            'Content-Type': ct, 'Content-Length': stat.size,
+            'Accept-Ranges': 'bytes', 'Cache-Control': 'no-cache',
+            'Content-Disposition': 'inline',
+          });
+          fs.createReadStream(fp).pipe(res);
+        }
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    }
     else if (pathname === '/api/formats' && req.method === 'POST') {
       const body = await parseBody(req);
       const url = body.url?.trim();

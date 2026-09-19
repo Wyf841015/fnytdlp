@@ -488,6 +488,112 @@ const loadHistory = async () => {
 };
 window.loadHistory = loadHistory;
 
+// ═══ Feature 4: 下载文件浏览器 ═══════════════════════════════
+const showFilesModal = () => {
+  showModal('filesModal');
+  loadDownloadedFiles();
+};
+window.showFilesModal = showFilesModal;
+
+const loadDownloadedFiles = async () => {
+  const list = $('filesList');
+  const count = $('filesCount');
+  const hint = $('downloadDirHint');
+  const search = $('filesSearch')?.value?.trim() || '';
+  if (!list) return;
+  list.innerHTML = '<div class="info-preview" style="padding:24px;text-align:center">⏳ 加载文件...</div>';
+  try {
+    const r = await API.get('/api/dl-files' + (search ? '?q=' + encodeURIComponent(search) : ''));
+    if (hint) hint.textContent = `📁 下载目录: ${r.dir || ''}`;
+    const files = r.files || [];
+    if (count) count.textContent = `共 ${r.total || files.length} 个文件`;
+    if (files.length === 0) {
+      list.innerHTML = `<div class="info-preview" style="padding:24px;text-align:center;color:var(--text-dim)">${search ? '无匹配文件' : '下载目录为空 — 还没有下载任何文件'}</div>`;
+      return;
+    }
+    let html = '';
+    for (const f of files) {
+      const size = formatBytes(f.size);
+      const date = new Date(f.mtime).toLocaleString('zh-CN');
+      const isVideo = /\.(mp4|mkv|webm|avi|mov|m4v|3gp|ts)$/i.test(f.name);
+      html += `<div class="history-item" style="display:flex;gap:8px;padding:8px;border-radius:var(--radius-sm);margin-bottom:4px;background:var(--bg-card);align-items:center">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(f.name)}">🎬 ${esc(f.name)}</div>
+          <div style="font-size:11px;color:var(--text-dim);display:flex;gap:8px">
+            <span>${size}</span><span>${date}</span>
+          </div>
+        </div>
+        ${isVideo ? `<button class="btn-icon-sm" title="播放" onclick="playDownloadedFile('${esc(f.name)}')">▶️</button>` : ''}
+        <button class="btn-icon-sm" title="删除文件" onclick="deleteDownloadedFile('${esc(f.name)}')">🗑</button>
+      </div>`;
+    }
+    list.innerHTML = html;
+  } catch (e) {
+    list.innerHTML = `<div class="info-preview" style="padding:24px;text-align:center;color:var(--color-danger)">❌ ${esc(e.message)}</div>`;
+  }
+};
+window.loadDownloadedFiles = loadDownloadedFiles;
+
+const playDownloadedFile = (name) => {
+  // 直接经 /api/play-file/<name> 用原生 <dialog> + <video> 播放
+  let dlg = $('playerDialog');
+  let video = $('playerDialogVideo');
+  let title = $('playerDialogTitle');
+  let info = $('playerDialogInfo');
+  if (!dlg || !video || !title || !info) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'playerDialog';
+    dlg.style.cssText = 'width:90vw;max-width:90vw;padding:0;border:none;background:#000;color:#fff;position:fixed;margin:0;top:5vh;left:5vw';
+    dlg.innerHTML = '<div style="display:flex;flex-direction:column;width:100%;min-height:80vh">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:rgba(20,20,20,0.95);border-bottom:1px solid rgba(255,255,255,0.1)">'
+      + '<span id="playerDialogTitle" style="font-size:14px;color:rgba(255,255,255,0.7)">▶ 加载中...</span>'
+      + '<button class="player-dialog-close-btn">关闭</button>'
+      + '</div>'
+      + '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:#000;min-height:0">'
+      + '<video id="playerDialogVideo" controls autoplay playsinline preload="auto" class="player-dialog-video" style="max-width:100%;max-height:70vh">您的浏览器不支持视频播放</video>'
+      + '</div>'
+      + '</div>';
+    document.body.appendChild(dlg);
+    video = $('playerDialogVideo');
+    title = $('playerDialogTitle');
+    info = $('playerDialogInfo');
+    const closeBtn = dlg.querySelector('.player-dialog-close-btn');
+    if (closeBtn) closeBtn.onclick = () => { video.pause(); if (dlg.open) dlg.close(); document.body.removeChild(dlg); };
+  }
+  title.textContent = '▶ ' + name;
+  try { if (typeof dlg.showModal === 'function') dlg.showModal(); } catch (e) {}
+  const src = API._url('/api/play-file/' + encodeURIComponent(name));
+  if (info) info.textContent = '⏳ 加载中...';
+  video.src = src;
+  video.onerror = () => {
+    const err = video.error;
+    if (err?.code === 4) {
+      fetch(src, { credentials: 'same-origin' }).then(r => r.blob()).then(blob => {
+        video.src = URL.createObjectURL(blob); video.load();
+      }).catch(e2 => { toast('播放失败: ' + (e2.message || e2), 'error'); });
+    } else {
+      toast('播放失败 (错误 ' + (err?.code ?? '?') + ')', 'error');
+    }
+  };
+};
+window.playDownloadedFile = playDownloadedFile;
+
+const deleteDownloadedFile = async (name) => {
+  if (!confirm('确定删除文件?\n' + name + '\n此操作不可恢复!')) return;
+  try {
+    const r = await API.del('api/dl-files', { name });
+    if (r && r.ok) {
+      toast('已删除: ' + name, 'success');
+      loadDownloadedFiles();
+    } else {
+      toast('删除失败: ' + ((r && r.error) || '未知错误'), 'error');
+    }
+  } catch (e) {
+    toast('删除失败: ' + e.message, 'error');
+  }
+};
+window.deleteDownloadedFile = deleteDownloadedFile;
+
 const reDownload = (url) => {
   hideModal('historyModal');
   $('addUrls').value = url;
