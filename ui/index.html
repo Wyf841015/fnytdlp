@@ -226,6 +226,14 @@
           <button class="btn btn-xs btn-ghost" onclick="selectAllPlaylist(false)">取消全选</button>
           <button class="btn btn-xs btn-ghost" onclick="selectOnlyNewPlaylist()" id="selectOnlyNewBtn">只选未下</button>
         </div>
+        <!-- Feature 6: 播放列表 codec 预设 -->
+        <div class="codec-presets" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">
+          <span style="font-size:0.8rem;color:var(--text-dim)">编码:</span>
+          <button class="btn btn-xs btn-ghost codec-btn" data-codec="" onclick="selectCodec('')">🎯 最高质量</button>
+          <button class="btn btn-xs btn-ghost codec-btn" data-codec="vp9" onclick="selectCodec('vp9')">🎬 VP9+Opus</button>
+          <button class="btn btn-xs btn-ghost codec-btn" data-codec="av1" onclick="selectCodec('av1')">🚀 AV1+Opus</button>
+          <button class="btn btn-xs btn-ghost codec-btn" data-codec="h264" onclick="selectCodec('h264')">📦 H.264+AAC</button>
+        </div>
       </div>
 
       <!-- 格式快速选择 + Cookie -->

@@ -1154,8 +1154,10 @@ const showAddTaskModal = () => {
   $('addPreview').textContent = '点 "解析" 按钮查看元数据';
   loadCookieSelect();
   _ambiguityChoice = null;  // Feature 3: 重置歧义选择 (新任务)
+  _selectedCodec = '';      // Feature 6: 重置 codec 预设
   const ambBar = $('ambiguousBar');
   if (ambBar) ambBar.style.display = 'none';
+  document.querySelectorAll('.codec-btn').forEach(b => { if (b.dataset.codec === '') b.classList.add('active'); });
   showModal('addTaskModal');
   setTimeout(() => $('addUrls').focus(), 100);
 };
@@ -1272,6 +1274,8 @@ const submitAddTask = async () => {
   if (activeContainer) {
     options.containerFormat = activeContainer.dataset.container;
   }
+  // Feature 6: 播放列表 codec 预设 (仅播放列表场景生效, 单视频不受影响)
+  if (_selectedCodec) options.codecPreset = _selectedCodec;
   const ot = $('addOutputTemplate').value.trim();
   if (ot) options.outputTemplate = ot;
   const sb = $('addSponsorBlock').value.trim();
@@ -1746,6 +1750,15 @@ window.hidePlaylist = hidePlaylist;
 const selectAllPlaylist = (checked) => {
   document.querySelectorAll('.playlist-checkbox').forEach(cb => cb.checked = checked);
 };
+// 播放列表 codec 预设选择 (Feature 6)
+let _selectedCodec = '';
+const selectCodec = (codec) => {
+  _selectedCodec = codec || '';
+  document.querySelectorAll('.codec-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.codec || '') === _selectedCodec);
+  });
+};
+window.selectCodec = selectCodec;
 // 只勾选未下载项 (播放列表重复下载场景)
 const selectOnlyNewPlaylist = () => {
   document.querySelectorAll('.playlist-checkbox').forEach(cb => {

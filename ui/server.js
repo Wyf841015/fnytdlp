@@ -537,6 +537,8 @@ const DEFAULT_CONFIG = {
   qualityPreset: 'best',
   // 容器格式 (借鉴 VidBee OneClickContainer): auto/mp4/mkv/webm/original
   containerFormat: 'auto',
+  // Feature 6: 播放列表 codec 预设 (VP9/AV1/H.264) — 空=默认最高质量
+  codecPreset: '',
   proxyUrl: '',
   noPlaylist: false,
   // Cookie 多网站列表: [{name, domain}] (文件存于 cookies/<safeName>.txt)
@@ -1057,7 +1059,19 @@ const buildYtDlpArgs = (task) => {
     if (isAudio) {
       args.push('-f', `${preset.audio}/bestaudio/best`);
     } else {
-      args.push('-f', `${preset.video}+${preset.audio}/${preset.video}/bestvideo+bestaudio/best`);
+      // Feature 6: 播放列表 codec 预设 — 覆盖默认的最高质量选择器
+      // vp9/av1/h264 三档 (对标 Scrin yt-dlp-ui playlist profiles)
+      const codecPreset = opts.codecPreset || config.codecPreset || '';
+      const CODEC_PRESETS = {
+        'vp9':   'bv[vcodec^=vp9]+ba[acodec^=opus]/bv*+ba*/b',
+        'av1':   'bv[vcodec^=av01]+ba[acodec^=opus]/bv*+ba*/b',
+        'h264':  'bv[vcodec^=avc1]+ba[acodec^=mp4a]/b[ext=mp4]/b',
+      };
+      if (CODEC_PRESETS[codecPreset]) {
+        args.push('-f', CODEC_PRESETS[codecPreset]);
+      } else {
+        args.push('-f', `${preset.video}+${preset.audio}/${preset.video}/bestvideo+bestaudio/best`);
+      }
     }
   }
   // Format sort
