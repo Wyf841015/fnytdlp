@@ -1388,6 +1388,7 @@ const startTask = (id) => {
     task.updatedAt = Date.now();
     saveTasks();
     broadcast('task-updated', task);
+    scheduleNext();  // Feature 5: spawn 失败也要释放并发槽, 调度下一个 pending
   });
   return true;
 };
