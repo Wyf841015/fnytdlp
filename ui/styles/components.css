@@ -1258,6 +1258,10 @@ html[data-theme='light'] .toast.info {
 .playlist-index { font-size:0.8rem; color:var(--text-dim); min-width:30px; }
 .playlist-title { flex:1; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .playlist-duration { font-size:0.8rem; color:var(--text-dim); min-width:50px; text-align:right; }
+.playlist-dl-badge { font-size:0.85rem; color:var(--color-success, #4ade80); min-width:30px; text-align:center; font-weight:700; }
+.playlist-item.is-downloaded { opacity:0.55; }
+.playlist-item.is-downloaded .playlist-title { text-decoration:line-through; color:var(--text-dim); }
+.playlist-item.is-downloaded .playlist-checkbox { accent-color:var(--text-dim); }
 /* 视频播放器 */
 .modal-fullscreen { width:90vw; max-width:1200px; }
 .player-body { padding:0; background:#000; display:flex; align-items:center; justify-content:center; min-height:60vh; }

@@ -1643,6 +1643,20 @@ const listPlaylist = (url, cookieName) => {
           });
         } catch (e) { /* 跳过解析失败行 */ }
       }
+      // Feature 1: 播放列表"只选未下载项" — 用 archive 集合标记每条是否已下载
+      // 前端据此默认只勾选新项、灰显已下项
+      if (entries.length > 1 && config.downloadArchive) {
+        const ap = path.isAbsolute(config.downloadArchive)
+          ? config.downloadArchive
+          : path.join(DATA_DIR, config.downloadArchive);
+        let dlSet = null;
+        try { dlSet = readArchiveIds(ap); } catch (e) { dlSet = null; }
+        if (dlSet && dlSet.size > 0) {
+          for (const e of entries) {
+            if (e.id && dlSet.has(e.id)) e.downloaded = true;
+          }
+        }
+      }
       resolve(entries);
     });
     proc.on('error', reject);

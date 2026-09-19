@@ -1543,18 +1543,27 @@ const parsePlaylist = async () => {
     _playlistEntries = r.entries;
     container.style.display = 'block';
     let html = '';
+    const hasDownloaded = r.entries.some(e => e.downloaded);
     for (const e of r.entries) {
-      const checked = 'checked';
+      // Feature 1: 已下载项默认不勾选 + 灰显 + 徽标 (只选新项)
+      const dl = e.downloaded;
+      const checked = dl ? '' : 'checked';
       const duration = e.duration ? formatDuration(e.duration) : '';
-      html += `<label class="playlist-item" onclick="event.stopPropagation()">
+      const rowCls = dl ? ' class="playlist-item is-downloaded"' : ' class="playlist-item"';
+      html += `<label${rowCls} onclick="event.stopPropagation()">
         <input type="checkbox" class="playlist-checkbox" data-index="${e.index}" ${checked}>
-        <span class="playlist-index">#${e.index}</span>
+        ${dl ? '<span class="playlist-dl-badge" title="已下载过">✓</span>' : '<span class="playlist-index">#' + e.index + '</span>'}
         <span class="playlist-title">${esc(e.title || e.id)}</span>
         ${duration ? `<span class="playlist-duration">${duration}</span>` : ''}
       </label>`;
     }
     items.innerHTML = html;
-    toast(`检测到播放列表 (${r.entries.length} 集)`, 'info');
+    const total = r.entries.length;
+    const newCount = r.entries.filter(e => !e.downloaded).length;
+    const toastMsg = hasDownloaded
+      ? `播放列表 ${total} 集 (${newCount} 集未下载, 已自动只勾选新项)`
+      : `检测到播放列表 (${total} 集)`;
+    toast(toastMsg, hasDownloaded ? 'success' : 'info');
   } catch (e) {
     container.style.display = 'none';
     _playlistEntries = [];
@@ -1571,6 +1580,15 @@ window.hidePlaylist = hidePlaylist;
 const selectAllPlaylist = (checked) => {
   document.querySelectorAll('.playlist-checkbox').forEach(cb => cb.checked = checked);
 };
+// 只勾选未下载项 (播放列表重复下载场景)
+const selectOnlyNewPlaylist = () => {
+  document.querySelectorAll('.playlist-checkbox').forEach(cb => {
+    const row = cb.closest('.playlist-item');
+    cb.checked = !(row && row.classList.contains('is-downloaded'));
+  });
+  toast('已只勾选未下载项', 'info');
+};
+window.selectOnlyNewPlaylist = selectOnlyNewPlaylist;
 window.selectAllPlaylist = selectAllPlaylist;
 
 // ── Settings Modal ────────────────────────────────────────────────
